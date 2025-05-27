@@ -1,0 +1,15 @@
+services:
+  app_backend_vivecol:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env_file
+    ports: 
+    - "3000:3000"
+
+  #prometheus:
+  #  iage: prom/prometheus
+    
+
+  #graphana:
