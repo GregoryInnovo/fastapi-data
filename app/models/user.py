@@ -11,7 +11,7 @@ class User(Base):
     role = Column(String, nullable=False)  # vendedor, encargado, administrador
     email = Column(String, unique=True, nullable=False)
     password = Column(String, nullable=False)  # Agregar campo de contraseña
-
+    phone_number=Column(String, nullable=True)
     # Relación con transacciones
     transactions = relationship("Transaction", back_populates="seller")
 

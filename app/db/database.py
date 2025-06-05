@@ -1,10 +1,11 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Datos de conexión
-DATABASE_URL = (
-    "postgresql+psycopg2://postgres:GUSTAVO316_@database-agencia-test.cqxuac6ekcdy.us-east-1.rds.amazonaws.com:5432/postgres"
-)
+DATABASE_URL = (os.getenv("DB_URL_CONNECTION_INFO"))
+
+
 #"postgresql+psycopg2://postgres:GUSTAVO316_@awsrds164.cn4gky80egt7.us-east-1.rds.amazonaws.com:5432/postgres"
 
 #database-agencia-test.cqxuac6ekcdy.us-east-1.rds.amazonaws.com
