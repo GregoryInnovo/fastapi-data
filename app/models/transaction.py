@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Enum, Date
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 from datetime import datetime, timezone
@@ -14,6 +15,10 @@ class TransactionStatus(str, enum.Enum):
     rejected = "rejected"
     terminado = "terminado"
 
+class CuentasRecaudo(Base):
+    __tablename__ = "cuentas_recaudo"
+
+    id = Column(Integer, primary_key=True, index=True)
 
 class Traveler(Base):
     __tablename__ = "travelers"
@@ -21,18 +26,18 @@ class Traveler(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String, nullable=False)
     dni = Column(String, nullable=False)
-    age = Column(Integer, nullable=False)
+    date_birth = Column(Date, nullable=False)
     phone = Column(String, nullable=False)
-    dni_image = Column(String, nullable=True)
     transaction_id = Column(Integer, ForeignKey("transactions.id"))
 
     # Relationship with Transaction
     transaction = relationship("Transaction", back_populates="travelers")
+    documentos = relationship("Documentos", back_populates="traveler")
 
 class Evidence(Base):
     __tablename__ = "evidence"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    id_transaction = Column(Integer, ForeignKey("transactions.id"), nullable=False)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=False)
     evidence_file = Column(String, nullable=False)
     upload_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     amount = Column(Float, nullable=False)
@@ -52,7 +57,30 @@ class Itinerario(Base):
 
     transaction = relationship("Transaction", back_populates="itinerario")
 
+class TravelInfo(Base):
+    __tablename__ = "travel_info"
 
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=False)
+    hotel = Column(String, nullable=True)
+    noches = Column(Integer, nullable=True)
+    incluye = Column(ARRAY(String), nullable=True)
+    no_incluye = Column(ARRAY(String), nullable=True)
+ 
+
+    transaction = relationship("Transaction", back_populates="travel_info")
+
+class Documentos(Base):
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=False)
+    viajero_id = Column(Integer, ForeignKey("travelers.id"), nullable=False)
+    document_url = Column(String, nullable=False)
+    tipo_documento = Column(String, nullable=False)
+
+    transaction = relationship("Transaction", back_populates="documentos")
+    traveler = relationship("Traveler", back_populates="documentos")
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -63,8 +91,6 @@ class Transaction(Base):
     client_phone = Column(String, nullable=False)
     client_dni = Column(String, nullable=False)
     client_address = Column(String, nullable=False)
-    invoice_image = Column(String, nullable=True)
-    id_image = Column(String, nullable=True)
     package = Column(String, nullable=False)
     quoted_flight = Column(String, nullable=False)
     agency_cost = Column(Float, nullable=False)
@@ -83,4 +109,5 @@ class Transaction(Base):
     seller = relationship("User", back_populates="transactions")
     travelers = relationship("Traveler", back_populates="transaction")
     evidences = relationship("Evidence", back_populates="transaction")
-
+    travel_info = relationship("TravelInfo", back_populates="transaction")
+    documentos = relationship("Documentos", back_populates="transaction")

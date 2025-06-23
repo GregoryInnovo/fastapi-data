@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+import requests
+from io import BytesIO
+import base64
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.transaction import (Transaction,
  Traveler,
  TransactionType,
  TransactionStatus, 
  Evidence, 
- Itinerario
+ Itinerario,
+ TravelInfo,
+ Documentos
  )
 from app.db.database import get_db
 from pydantic import BaseModel
@@ -13,20 +18,22 @@ from typing import List
 from datetime import datetime
 from app.models.user import User
 from typing import Optional
+from datetime import date
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 class EvidenceCreate(BaseModel):
     evidence_file: str
     amount: float
+    filename: str = None
 
 
 class TravelerCreate(BaseModel):
     name: str
     dni: str
-    age: int
+    date_birth: date
     phone: str
-    dni_image: str
+
 
 class ItinerarioCreate(BaseModel):
     aerolinea: str
@@ -35,14 +42,47 @@ class ItinerarioCreate(BaseModel):
     hora_salida: str
     hora_llegada: str
 
+class ItinerarioUpdate(BaseModel):
+    aerolinea: Optional[str] = None
+    ruta: Optional[str] = None
+    fecha: Optional[datetime] = None
+    hora_salida: Optional[str] = None
+    hora_llegada: Optional[str] = None
+
+class CuentasRecaudo(BaseModel):
+    banco: str
+    numero: str
+    nombre: str
+    nit: str
+
+class TravelInfoCrerate(BaseModel):
+    hotel: str = None
+    noches: int = None
+    incluye: list = None
+    no_incluye: list = None
+
+class TravelInfoUpdate(BaseModel):
+    hotel: Optional[str] = None
+    noches: Optional[int] = None
+    incluye: Optional[list] = None
+    no_incluye: Optional[list] = None
+
+
+class DocumentosCreate(BaseModel):
+    document_file: str
+    tipo_documento: str
+    filename: str
+
+class DocumentosUpdate(BaseModel):
+    document_url: Optional[str] = None
+    tipo_documento: Optional[str] = None
+
 class TransactionCreate(BaseModel):
     client_name: str
     client_email: str
     client_phone: str
     client_dni: str
     client_address: str
-    invoice_image: str
-    id_image: str
     package: str
     quoted_flight: str
     agency_cost: float
@@ -53,14 +93,14 @@ class TransactionCreate(BaseModel):
     receipt: str
     start_date: datetime = None
     end_date: datetime = None
-    travelers: List[TravelerCreate]
+    travelers: List[TravelerCreate] = None
+    travel_info: List[TravelInfoCrerate] = None
+    evidence: EvidenceCreate = None
+    itinerario: List[ItinerarioCreate] = None
+
+
    
-class ItineararioUpdate(BaseModel):
-    aerolinea: Optional[str] = None
-    ruta: Optional[str] = None
-    fecha: Optional[datetime] = None
-    hora_salida: Optional[str] = None
-    hora_llegada: Optional[str] = None
+
 
 @router.post("/", status_code=201)
 def create_transaction(transaction: TransactionCreate, db: Session = Depends(get_db)):
@@ -70,8 +110,6 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
         client_phone=transaction.client_phone,
         client_dni=transaction.client_dni,
         client_address=transaction.client_address,
-        invoice_image=transaction.invoice_image,
-        id_image=transaction.id_image,
         package=transaction.package,
         quoted_flight=transaction.quoted_flight,
         agency_cost=transaction.agency_cost,
@@ -88,21 +126,110 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
     db.commit()
     db.refresh(new_transaction)
 
-    for traveler_data in transaction.travelers:
-        traveler = Traveler(
-            name=traveler_data.name,
-            dni=traveler_data.dni,
-            age=traveler_data.age,
-            phone=traveler_data.phone,
-            dni_image=traveler_data.dni_image,
+    if transaction.travelers:
+        for traveler_data in transaction.travelers:
+            traveler = Traveler(
+                name=traveler_data.name,
+                dni=traveler_data.dni,
+                date_birth=traveler_data.date_birth,
+                phone=traveler_data.phone,
+                transaction_id=new_transaction.id
+            )
+            db.add(traveler)
+
+    if transaction.travel_info:
+        for info in transaction.travel_info:
+            travel_info = TravelInfo(
+                hotel=info.hotel,
+                noches=info.noches,
+                incluye=info.incluye,
+                no_incluye=info.no_incluye,
+                transaction_id=new_transaction.id
+            )
+            db.add(travel_info)
+    if transaction.evidence and transaction.evidence.evidence_file[:5] != "https":
+        base64_string = transaction.evidence.evidence_file
+        filename = transaction.evidence.filename
+        # Elimina encabezado "data:image/png;base64,..." si existe
+        if "," in base64_string:
+            base64_string = base64_string.split(",")[1]
+        image_data = base64.b64decode(base64_string)
+        file = BytesIO(image_data)
+        file.name = filename+".jpeg"
+        
+
+        url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/6e0954b7-832f-4817-86cd-9c59f18d8a52"
+        image_bytes = file
+        files = {"data": (file.name,
+                            image_bytes, "application/octet-stream")} 
+        headers = {"Content-Type": "application/json"}
+        res = requests.post(url, files=files)
+        if res.status_code != 200:
+            raise HTTPException(status_code=500, detail="Error al subir el documento")
+        print(res.text)
+        try:
+            payload_resp = res.json()  # parsea el JSON
+            document_url = payload_resp[0].get("imageUrl")
+        except:
+            texto = res.text.strip()
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "El servicio de storage no devolvió un JSON válido. "
+                    f"Contenido bruto: {texto!r}"
+                )
+            )
+
+
+        evidence = Evidence(
+            evidence_file=document_url,
+            amount=transaction.evidence.amount,
             transaction_id=new_transaction.id
         )
-        db.add(traveler)
-
+        db.add(evidence)
+    if transaction.evidence and transaction.evidence.evidence_file[:5] == "https":
+        evidence = Evidence(
+            evidence_file=transaction.evidence.evidence_file,
+            amount=transaction.evidence.amount,
+            transaction_id=new_transaction.id
+        )
+        db.add(evidence)
+    
+    if transaction.itinerario:
+        for itinerario in transaction.itinerario:
+            itinerarios = Itinerario(
+                hora_llegada=itinerario.hora_llegada,
+                hora_salida=itinerario.hora_salida,
+                fecha=itinerario.fecha,
+                ruta=itinerario.ruta,
+                aerolinea=itinerario.aerolinea,
+                transaction_id=new_transaction.id
+            )
+            db.add(itinerarios)
     db.commit()
-    return {"message": "Transacción creada con éxito", "transaction": new_transaction}
+    return {"message": "Transacción creada con éxito", "transaction_id": new_transaction.id}
 
-@router.get("/")
+@router.get("/", status_code=201)
+def get_all_transaction_test(db: Session = Depends(get_db)):
+    transactions = (
+        db.query(Transaction)
+        .options(
+            joinedload(Transaction.seller),
+            selectinload(Transaction.travelers),
+            selectinload(Transaction.evidences),
+            selectinload(Transaction.itinerario),
+            selectinload(Transaction.documentos),
+            selectinload(Transaction.travel_info),
+            selectinload(Transaction.itinerario)
+        )
+        .all()
+    )
+    if not transactions:
+        raise HTTPException(status_code=404, detail="No se encontraron transacciones")
+    
+    return transactions
+
+@router.get("/test")
 def list_transactions(db: Session = Depends(get_db)):
     transactions = db.query(Transaction).all()
     if not transactions:
@@ -113,7 +240,8 @@ def list_transactions(db: Session = Depends(get_db)):
         # Obtener información del vendedor
         seller = db.query(User).filter(User.id == transaction.seller_id).first()
         travelers = db.query(Traveler).filter(Traveler.transaction_id == transaction.id).all()
-        #itinearrio = db.query(Itinerario).filter(Itinerario.transaction_id == transaction.id).all()
+        #itinerario = db.query(Itinerario).filter(Itinerario.transaction_id == transaction.id).all()
+        evidences = db.query(Evidence).filter(Evidence.transaction_id == transaction.id).all()
         response = {
             "id": transaction.id,
             "client_name": transaction.client_name,
@@ -121,8 +249,6 @@ def list_transactions(db: Session = Depends(get_db)):
             "client_phone": transaction.client_phone,
             "client_dni": transaction.client_dni,
             "client_address": transaction.client_address,
-            "invoice_image": transaction.invoice_image,
-            "id_image": transaction.id_image,
             "package": transaction.package,
             "quoted_flight": transaction.quoted_flight,
             "agency_cost": transaction.agency_cost,
@@ -141,12 +267,23 @@ def list_transactions(db: Session = Depends(get_db)):
                     "id": traveler.id,
                     "name": traveler.name,
                     "dni": traveler.dni,
-                    "age": traveler.age,
-                    "phone": traveler.phone,
-                    "dni_image": traveler.dni_image
+                    "date_birth": traveler.date_birth,
+                    "phone": traveler.phone
                 } for traveler in travelers
             ],
-            "itinerario": transaction.itinerario
+            "itinerario": transaction.itinerario,
+            "travelers": transaction.travelers,
+            "travel_info": transaction.travel_info,
+            "documentos": transaction.documentos,
+            "evidence": [
+                {
+                "id": evidence.id,
+                "transaction_id": evidence.transaction_id,
+                "evidence_file": evidence.evidence_file,
+                "upload_date": evidence.upload_date,
+                "amount": evidence.amount
+                } for evidence in evidences
+            ]
         }
         result.append(response)
     
@@ -176,7 +313,11 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
     
     # Obtener los viajeros asociados
     travelers = db.query(Traveler).filter(Traveler.transaction_id == transaction_id).all()
-    
+
+    travel_info = db.query(TravelInfo).filter(TravelInfo.transaction_id == transaction_id).all()
+    documents = db.query(Documentos).filter(Documentos.transaction_id == transaction_id).all()
+    evidences = db.query(Evidence).filter(Evidence.transaction_id == transaction_id).all()
+    itinerarios = db.query(Itinerario).filter(Itinerario.transaction_id == transaction_id).all()
     # Estructura de respuesta
     response = {
         "id": transaction.id,
@@ -185,8 +326,6 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
         "client_phone": transaction.client_phone,
         "client_dni": transaction.client_dni,
         "client_address": transaction.client_address,
-        "invoice_image": transaction.invoice_image,
-        "id_image": transaction.id_image,
         "package": transaction.package,
         "quoted_flight": transaction.quoted_flight,
         "agency_cost": transaction.agency_cost,
@@ -205,12 +344,32 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
                 "id": traveler.id,
                 "name": traveler.name,
                 "dni": traveler.dni,
-                "age": traveler.age,
-                "phone": traveler.phone,
-                "dni_image": traveler.dni_image
+                "date_birth": traveler.date_birth,
+                "phone": traveler.phone
             } for traveler in travelers
         ],
-        "itinerario": transaction.itinerario
+        "itinerario": transaction.itinerario,
+        "travelers": transaction.travelers,
+        "travel_info": travel_info,
+        "documentos": documents,
+        "evidence": [
+                {
+                "id": evidence.id,
+                "transaction_id": evidence.transaction_id,
+                "evidence_file": evidence.evidence_file,
+                "upload_date": evidence.upload_date,
+                "amount": evidence.amount
+                } for evidence in evidences
+            ],
+        "itinerario": [
+            {"id": itinerario.id,
+             "transaction_id": itinerario.transaction_id,
+             "aerolinea": itinerario.aerolinea,
+             "ruta": itinerario.ruta,
+             "hora_salida": itinerario.hora_salida,
+             "hora_llegada": itinerario.hora_llegada
+            } for itinerario in itinerarios
+        ]
     }
     
     return response
@@ -234,8 +393,6 @@ def filter_transactions_by_status(status: TransactionStatus, db: Session = Depen
             "client_phone": transaction.client_phone,
             "client_dni": transaction.client_dni,
             "client_address": transaction.client_address,
-            "invoice_image": transaction.invoice_image,
-            "id_image": transaction.id_image,
             "package": transaction.package,
             "quoted_flight": transaction.quoted_flight,
             "agency_cost": transaction.agency_cost,
@@ -254,9 +411,8 @@ def filter_transactions_by_status(status: TransactionStatus, db: Session = Depen
                     "id": traveler.id,
                     "name": traveler.name,
                     "dni": traveler.dni,
-                    "age": traveler.age,
-                    "phone": traveler.phone,
-                    "dni_image": traveler.dni_image
+                    "date_birth": traveler.date_birth,
+                    "phone": traveler.phone
                 } for traveler in travelers
             ],
             "itinerario": transaction.itinerario
@@ -284,8 +440,6 @@ def get_transactions_by_seller(seller_id: int, db: Session = Depends(get_db)):
             "client_phone": transaction.client_phone,
             "client_dni": transaction.client_dni,
             "client_address": transaction.client_address,
-            "invoice_image": transaction.invoice_image,
-            "id_image": transaction.id_image,
             "package": transaction.package,
             "quoted_flight": transaction.quoted_flight,
             "agency_cost": transaction.agency_cost,
@@ -304,12 +458,14 @@ def get_transactions_by_seller(seller_id: int, db: Session = Depends(get_db)):
                     "id": traveler.id,
                     "name": traveler.name,
                     "dni": traveler.dni,
-                    "age": traveler.age,
-                    "phone": traveler.phone,
-                    "dni_image": traveler.dni_image
+                    "date_birth": traveler.date_birth,
+                    "phone": traveler.phone
                 } for traveler in travelers
             ],
-            "itinerario": transaction.itinerario
+            "itinerario": transaction.itinerario,
+            "travelers": transaction.travelers,
+            "travel_info": transaction.travel_info,
+            "documentos": transaction.documentos
         })
     
     return response
@@ -331,10 +487,6 @@ def update_transaction(transaction_id: int, transaction: TransactionCreate, db: 
         existing_transaction.client_dni = transaction.client_dni
     if transaction.client_address is not None:
         existing_transaction.client_address = transaction.client_address
-    if transaction.invoice_image is not None:
-        existing_transaction.invoice_image = transaction.invoice_image
-    if transaction.id_image is not None:
-        existing_transaction.id_image = transaction.id_image
     if transaction.package is not None:
         existing_transaction.package = transaction.package
     if transaction.quoted_flight is not None:
@@ -369,9 +521,8 @@ def update_transaction(transaction_id: int, transaction: TransactionCreate, db: 
             traveler = Traveler(
                 name=traveler_data.name,
                 dni=traveler_data.dni,
-                age=traveler_data.age,
+                date_birth=traveler_data.date_birth,
                 phone=traveler_data.phone,
-                dni_image=traveler_data.dni_image,
                 transaction_id=existing_transaction.id
             )
             db.add(traveler)
@@ -396,12 +547,11 @@ def update_traveler(transaction_id: int, traveler_id: int, traveler_data: Travel
         traveler.name = traveler_data.name
     if traveler_data.dni is not None:
         traveler.dni = traveler_data.dni
-    if traveler_data.age is not None:
-        traveler.age = traveler_data.age
+    if traveler_data.date_birth is not None:
+        traveler.date_birth = traveler_data.date_birth
     if traveler_data.phone is not None:
         traveler.phone = traveler_data.phone
-    if traveler_data.dni_image is not None:
-        traveler.dni_image = traveler_data.dni_image
+
 
     db.refresh(traveler)
     db.commit()
@@ -453,8 +603,6 @@ def get_transactions_by_date_range(
             "client_phone": transaction.client_phone,
             "client_dni": transaction.client_dni,
             "client_address": transaction.client_address,
-            "invoice_image": transaction.invoice_image,
-            "id_image": transaction.id_image,
             "package": transaction.package,
             "quoted_flight": transaction.quoted_flight,
             "agency_cost": transaction.agency_cost,
@@ -473,12 +621,14 @@ def get_transactions_by_date_range(
                     "id": traveler.id,
                     "name": traveler.name,
                     "dni": traveler.dni,
-                    "age": traveler.age,
-                    "phone": traveler.phone,
-                    "dni_image": traveler.dni_image
+                    "date_birth": traveler.date_birth,
+                    "phone": traveler.phone
                 } for traveler in travelers
             ],
-            "itinerario": transaction.itinerario
+            "itinerario": transaction.itinerario,
+            "travelers": transaction.travelers,
+            "travel_info": transaction.travel_info,
+            "documentos": transaction.documentos
         })
     
     return response
@@ -539,8 +689,6 @@ def filter_transactions_mixed(
             "client_phone": transaction.client_phone,
             "client_dni": transaction.client_dni,
             "client_address": transaction.client_address,
-            "invoice_image": transaction.invoice_image,
-            "id_image": transaction.id_image,
             "package": transaction.package,
             "quoted_flight": transaction.quoted_flight,
             "agency_cost": transaction.agency_cost,
@@ -559,9 +707,8 @@ def filter_transactions_mixed(
                     "id": traveler.id,
                     "name": traveler.name,
                     "dni": traveler.dni,
-                    "age": traveler.age,
-                    "phone": traveler.phone,
-                    "dni_image": traveler.dni_image
+                    "date_birth": traveler.date_birth,
+                    "phone": traveler.phone
                 } for traveler in travelers
             ],
             "itinerario": [
@@ -586,7 +733,7 @@ def add_evidence(transaction_id: int, evidence: EvidenceCreate, db: Session = De
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
 
     new_evidence = Evidence(
-        id_transaction=transaction_id,
+        transaction_id=transaction_id,
         evidence_file=evidence.evidence_file,
         amount=evidence.amount
     )
@@ -598,14 +745,14 @@ def add_evidence(transaction_id: int, evidence: EvidenceCreate, db: Session = De
 
 @router.get("/{transaction_id}/evidence")
 def get_evidences_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    evidence = db.query(Evidence).filter(Evidence.id_transaction == transaction_id).all()
+    evidence = db.query(Evidence).filter(Evidence.transaction_id == transaction_id).all()
     if not evidence:
         raise HTTPException(status_code=404, detail="No se encontraron evidencias para esta transacción")
     return evidence
 
 @router.delete("/{transaction_id}/evidence/{evidence_id}", status_code=204)
 def delete_evidence(transaction_id: int, evidence_id: int, db: Session = Depends(get_db)):
-    evidence = db.query(Evidence).filter(Evidence.id == evidence_id, Evidence.id_transaction == transaction_id).first()
+    evidence = db.query(Evidence).filter(Evidence.id == evidence_id, Evidence.transaction_id == transaction_id).first()
     if not evidence:
         raise HTTPException(status_code=404, detail="Evidencia no encontrada")
 
@@ -667,7 +814,7 @@ def list_all_itinerarios(db: Session = Depends(get_db)):
     return itinerarios
 
 @router.patch("/{transaction_id}/itinerario/{itinerario_id}", status_code=200)
-def update_itinerario(transaction_id: int, itinerario_id: int, itinerario_data: ItineararioUpdate, db: Session = Depends(get_db)):
+def update_itinerario(transaction_id: int, itinerario_id: int, itinerario_data: ItinerarioUpdate, db: Session = Depends(get_db)):
     itinerario = db.query(Itinerario).filter(Itinerario.id == itinerario_id, Itinerario.transaction_id == transaction_id).first()
     if not itinerario:
         raise HTTPException(status_code=404, detail="Itinerario no encontrado")
@@ -688,3 +835,138 @@ def update_itinerario(transaction_id: int, itinerario_id: int, itinerario_data: 
     db.refresh(itinerario)
 
     return {"message": "Itinerario actualizado con éxito", "itinerario": itinerario}
+
+@router.post("/{transaction_id}/travel_info", status_code=201)
+def create_travel_info(transaction_id: int, travel_info: TravelInfoCrerate, db: Session = Depends(get_db)):
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaccion no encontrada")
+
+    new_travel_info = TravelInfo(
+        transaction_id = transaction_id,
+        hotel = travel_info.hotel,
+        noches = travel_info.noches,
+        incluye = travel_info.incluye,
+        no_incluye = travel_info.no_incluye
+    )
+
+    db.add(new_travel_info)
+    db.commit()
+    db.refresh(new_travel_info)
+
+@router.get("/{transaction_id}/travel_info")
+def get_travel_info_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
+    travel_info = db.query(TravelInfo).filter(TravelInfo.transaction_id == transaction_id).all()
+    if not travel_info:
+        raise HTTPException(status_code=404, detail="No se encontraron datos de viaje para esta transaccion")
+    return travel_info
+
+@router.delete("/{transaction_id}/travel_info/{travel_info_id}", status_code=200)
+def delete_travel_info(transaction_id: int, travel_info_id: int, db: Session = Depends(get_db)):
+    travel_info = db.query(TravelInfo).filter(TravelInfo.id == travel_info_id, Transaction.id == transaction_id).first()
+    if not travel_info:
+        raise HTTPException(status_code = 404, detail = "No se encontro esta informacion de viaje para este itinerario")
+
+    db.delete(travel_info)
+    db.commit()
+    return {"message": "Informacion de viaje eliminada con exito"}
+
+@router.patch("/{transaction_id}/travel_info/{travel_info_id}", status_code=200)
+def update_travel_info_by_transaction_id(transaction_id: int, travel_info_id: int, data: TravelInfoUpdate, db: Session = Depends(get_db)):
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="No Se encontro la transaccion")
+    
+    travel_info = db.query(TravelInfo).filter(TravelInfo.id == travel_info_id).first()
+
+    if data.hotel is not None:
+        travel_info.hotel = data.hotel
+    if data.noches is not None:
+        travel_info.noches = data.noches
+    if data.incluye is not None:
+        travel_info.incluye = data.incluye
+    if data.no_incluye is not None:
+        travel_info.no_incluye = data.no_incluye
+    if data.cuentas_recaudo is not None:
+        travel_info.cuentas_recaudo = data.cuentas_recaudo
+    
+    db.commit()
+    db.refresh(travel_info)
+
+
+@router.get("/travel_info/list")
+def list_all_travel_info(db: Session = Depends(get_db)):
+    travel_info = db.query(TravelInfo).all()
+    if not travel_info:
+        raise HTTPException(status_code = 404, detail = "No se encontraron registros de informacion de viaje")
+    return travel_info
+
+@router.post("/{transaction_id}/documentos/{traveler_id}", status_code=201)
+# async def add_documentos(transaction_id: int, traveler_id: int, documentos: DocumentosCreate, db: Session = Depends(get_db)):
+async def add_documentos(transaction_id: int, traveler_id: int, document_file: UploadFile = File(...), tipo_documento: str = Form(...), db: Session = Depends(get_db)):
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+
+    #Upload the document file to a storage service (AWS S3) retrive the url
+    url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/dc87c6e6-7f0b-4734-965e-89ab5d5b7b00"
+    image_bytes = await document_file.read()
+    #data = {"data": base64_encoded_file}
+    files = {"data": (document_file.filename,
+                        image_bytes, "application/octet-stream")}      
+    # image_bytes = await documentos.document_file.read()
+    # base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
+    #image_bytes = await document_file.read()
+    #base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
+    #data = {"data": base64_encoded_file}
+    headers = {"Content-Type": "application/json"}
+    res = requests.post(url, files=files)
+    if res.status_code != 200:
+        raise HTTPException(status_code=500, detail="Error al subir el documento")
+    print(res.text)
+    try:
+        payload_resp = res.json()  # parsea el JSON
+        document_url = payload_resp.get("imageUrl")
+    except:
+        texto = res.text.strip()
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "El servicio de storage no devolvió un JSON válido. "
+                f"Contenido bruto: {texto!r}"
+            )
+        )
+    new_documento = Documentos(
+        transaction_id=transaction_id,
+        viajero_id=traveler_id,
+        document_url=document_url,
+        tipo_documento=tipo_documento
+    )
+    db.add(new_documento)
+    db.commit()
+    db.refresh(new_documento)
+    return {"message": "Documento agregado con éxito", "documento": new_documento}
+
+@router.get("/{transaction_id}/documentos")
+def get_documentos_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
+    documentos = db.query(Documentos).filter(Documentos.transaction_id == transaction_id).all()
+    if not documentos:
+        raise HTTPException(status_code=404, detail="No se encontraron documentos para esta transacción")
+    return documentos
+
+@router.delete("/{transaction_id}/documentos/{documento_id}", status_code=204)
+def delete_documento(transaction_id: int, documento_id: int, db: Session = Depends(get_db)):
+    documento = db.query(Documentos).filter(Documentos.id == documento_id, Documentos.transaction_id == transaction_id).first()
+    if not documento:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+    db.delete(documento)
+    db.commit()
+    return {"message": "Documento eliminado con éxito"}
+
+@router.get("/documentos/list")
+def list_all_documentos(db: Session = Depends(get_db)):
+    documentos = db.query(Documentos).all()
+    if not documentos:
+        raise HTTPException(status_code=404, detail="No se encontraron documentos")
+    return documentos
