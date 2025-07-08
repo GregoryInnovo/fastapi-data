@@ -1,6 +1,10 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde el archivo .env
+load_dotenv()
 
 # Datos de conexión
 DATABASE_URL = (os.getenv("DB_URL_CONNECTION_INFO"))
