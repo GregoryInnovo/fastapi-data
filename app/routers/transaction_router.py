@@ -167,53 +167,53 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
                 transaction_id=new_transaction.id
             )
             db.add(travel_info)
-    if transaction.evidence and transaction.evidence.evidence_file[:5] != "https":
-        base64_string = transaction.evidence.evidence_file
-        filename = transaction.evidence.filename
-        # Elimina encabezado "data:image/png;base64,..." si existe
-        if "," in base64_string:
-            base64_string = base64_string.split(",")[1]
-        image_data = base64.b64decode(base64_string)
-        file = BytesIO(image_data)
-        file.name = filename+".jpeg"
+    # if transaction.evidence and transaction.evidence.evidence_file[:5] != "https":
+    #     base64_string = transaction.evidence.evidence_file
+    #     filename = transaction.evidence.filename
+    #     # Elimina encabezado "data:image/png;base64,..." si existe
+    #     if "," in base64_string:
+    #         base64_string = base64_string.split(",")[1]
+    #     image_data = base64.b64decode(base64_string)
+    #     file = BytesIO(image_data)
+    #     file.name = filename+".jpeg"
         
 
-        url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/6e0954b7-832f-4817-86cd-9c59f18d8a52"
-        image_bytes = file
-        files = {"data": (file.name,
-                            image_bytes, "application/octet-stream")} 
-        headers = {"Content-Type": "application/json"}
-        res = requests.post(url, files=files)
-        if res.status_code != 200:
-            raise HTTPException(status_code=500, detail="Error al subir el documento")
-        print(res.text)
-        try:
-            payload_resp = res.json()  # parsea el JSON
-            document_url = payload_resp[0].get("imageUrl")
-        except:
-            texto = res.text.strip()
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "El servicio de storage no devolvió un JSON válido. "
-                    f"Contenido bruto: {texto!r}"
-                )
-            )
+    #     url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/6e0954b7-832f-4817-86cd-9c59f18d8a52"
+    #     image_bytes = file
+    #     files = {"data": (file.name,
+    #                         image_bytes, "application/octet-stream")} 
+    #     headers = {"Content-Type": "application/json"}
+    #     res = requests.post(url, files=files)
+    #     if res.status_code != 200:
+    #         raise HTTPException(status_code=500, detail="Error al subir el documento")
+    #     print(res.text)
+    #     try:
+    #         payload_resp = res.json()  # parsea el JSON
+    #         document_url = payload_resp[0].get("imageUrl")
+    #     except:
+    #         texto = res.text.strip()
+    #         raise HTTPException(
+    #             status_code=500,
+    #             detail=(
+    #                 "El servicio de storage no devolvió un JSON válido. "
+    #                 f"Contenido bruto: {texto!r}"
+    #             )
+    #         )
 
 
-        evidence = Evidence(
-            evidence_file=document_url,
-            amount=transaction.evidence.amount,
-            transaction_id=new_transaction.id
-        )
-        db.add(evidence)
-    if transaction.evidence and transaction.evidence.evidence_file[:5] == "https":
-        evidence = Evidence(
-            evidence_file=transaction.evidence.evidence_file,
-            amount=transaction.evidence.amount,
-            transaction_id=new_transaction.id
-        )
-        db.add(evidence)
+    #     evidence = Evidence(
+    #         evidence_file=document_url,
+    #         amount=transaction.evidence.amount,
+    #         transaction_id=new_transaction.id
+    #     )
+    #     db.add(evidence)
+    # if transaction.evidence and transaction.evidence.evidence_file[:5] == "https":
+        # evidence = Evidence(
+        #     evidence_file=transaction.evidence.evidence_file,
+        #     amount=transaction.evidence.amount,
+        #     transaction_id=new_transaction.id
+        # )
+        # db.add(evidence)
     
     if transaction.itinerario:
         for itinerario in transaction.itinerario:
