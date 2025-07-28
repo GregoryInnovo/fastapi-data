@@ -99,6 +99,26 @@ class TransactionCreate(BaseModel):
     itinerario: List[ItinerarioCreate] = None
 
 
+class TransactionUpdate(BaseModel):
+    client_name: Optional[str] = None
+    client_email: Optional[str] = None
+    client_phone: Optional[str] = None
+    client_dni: Optional[str] = None
+    client_address: Optional[str] = None
+    package: Optional[str] = None
+    quoted_flight: Optional[str] = None
+    agency_cost: Optional[float] = None
+    amount: Optional[float] = None
+    transaction_type: Optional[TransactionType] = None
+    status: Optional[TransactionStatus] = None
+    seller_id: Optional[int] = None
+    receipt: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    travelers: Optional[List[TravelerCreate]] = None
+    travel_info: Optional[List[TravelInfoCrerate]] = None
+    evidence: Optional[EvidenceCreate] = None
+    itinerario: Optional[List[ItinerarioCreate]] = None
    
 
 
@@ -471,7 +491,7 @@ def get_transactions_by_seller(seller_id: int, db: Session = Depends(get_db)):
     return response
 
 @router.patch("/{transaction_id}", status_code=200)
-def update_transaction(transaction_id: int, transaction: TransactionCreate, db: Session = Depends(get_db)):
+def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: Session = Depends(get_db)):
     existing_transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not existing_transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
