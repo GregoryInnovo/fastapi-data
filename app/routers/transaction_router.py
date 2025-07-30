@@ -496,7 +496,7 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
     if not existing_transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
 
-    # Actualizar solo los campos que se proporcionan
+    # Actualizar campos básicos de la transacción
     if transaction.client_name is not None:
         existing_transaction.client_name = transaction.client_name
     if transaction.client_email is not None:
@@ -528,15 +528,9 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
     if transaction.end_date is not None:
         existing_transaction.end_date = transaction.end_date
 
-    db.commit()
-    db.refresh(existing_transaction)
-
-    # Actualizar los viajeros si se proporciona una lista de viajeros
+    # Actualizar viajeros
     if transaction.travelers is not None:
-        # Primero, eliminar los viajeros existentes
         db.query(Traveler).filter(Traveler.transaction_id == transaction_id).delete()
-
-        # Luego, agregar los nuevos viajeros
         for traveler_data in transaction.travelers:
             traveler = Traveler(
                 name=traveler_data.name,
@@ -547,20 +541,66 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
             )
             db.add(traveler)
     
+    # Actualizar información de viaje
     if transaction.travel_info is not None:
-        for traveler_info in transaction.travel_info:
+        db.query(TravelInfo).filter(TravelInfo.transaction_id == transaction_id).delete()
+        for travel_info_data in transaction.travel_info:
             travel_info = TravelInfo(
                 transaction_id=existing_transaction.id,
-                hotel=traveler_info.hotel,
-                noches=traveler_info.noches,
-                incluye=traveler_info.incluye,
-                no_incluye=traveler_info.no_incluye
+                hotel=travel_info_data.hotel,
+                noches=travel_info_data.noches,
+                incluye=travel_info_data.incluye,
+                no_incluye=travel_info_data.no_incluye
             )
-            db.add(traveler_info)
+            db.add(travel_info)
+
+    # Actualizar itinerario
+    if transaction.itinerario is not None:
+        db.query(Itinerario).filter(Itinerario.transaction_id == transaction_id).delete()
+        for itinerario_data in transaction.itinerario:
+            itinerario = Itinerario(
+                transaction_id=existing_transaction.id,
+                aerolinea=itinerario_data.aerolinea,
+                ruta=itinerario_data.ruta,
+                fecha=itinerario_data.fecha,
+                hora_salida=itinerario_data.hora_salida,
+                hora_llegada=itinerario_data.hora_llegada
+            )
+            db.add(itinerario)
+
+    # Actualizar evidencias
+    if transaction.evidence is not None:
+        db.query(Evidence).filter(Evidence.transaction_id == transaction_id).delete()
+        evidence = Evidence(
+            transaction_id=existing_transaction.id,
+            evidence_file=transaction.evidence.evidence_file,
+            amount=transaction.evidence.amount
+        )
+        db.add(evidence)
 
     db.commit()
-    return {"message": "Transacción actualizada con éxito", "transaction": existing_transaction}
+    db.refresh(existing_transaction)
 
+    # Obtener la transacción actualizada con todas sus relaciones
+    updated_transaction = (
+        db.query(Transaction)
+        .filter(Transaction.id == transaction_id)
+        .options(
+            joinedload(Transaction.seller),
+            selectinload(Transaction.travelers),
+            selectinload(Transaction.evidences),
+            selectinload(Transaction.itinerario),
+            selectinload(Transaction.documentos),
+            selectinload(Transaction.travel_info)
+        )
+        .first()
+    )
+
+    return {
+        "message": "Transacción actualizada con éxito",
+        "transaction": updated_transaction
+    }
+    
 @router.patch("/{transaction_id}/travelers/{traveler_id}", status_code=200)
 def update_traveler(transaction_id: int, traveler_id: int, traveler_data: TravelerCreate, db: Session = Depends(get_db)):
     # Verificar si la transacción existe
