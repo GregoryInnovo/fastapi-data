@@ -14,6 +14,7 @@ class TransactionStatus(str, enum.Enum):
     approved = "approved"
     rejected = "rejected"
     terminado = "terminado"
+    incompleta = "incompleta"
 
 class CuentasRecaudo(Base):
     __tablename__ = "cuentas_recaudo"
