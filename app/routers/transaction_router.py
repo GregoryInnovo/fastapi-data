@@ -958,11 +958,10 @@ def update_travel_info_by_transaction_id(transaction_id: int, travel_info_id: in
         travel_info.incluye = data.incluye
     if data.no_incluye is not None:
         travel_info.no_incluye = data.no_incluye
-    if data.cuentas_recaudo is not None:
-        travel_info.cuentas_recaudo = data.cuentas_recaudo
-    
+
     db.commit()
     db.refresh(travel_info)
+    return {"message": "TravelInfo actualizado con exito", "documento": travel_info}
 
 
 @router.get("/travel_info/list")
@@ -974,22 +973,23 @@ def list_all_travel_info(db: Session = Depends(get_db)):
 
 
 @router.post("/{transaction_id}/documentos/{traveler_id}", status_code=201)
-async def add_documentos(transaction_id: int,  traveler_id: int, data: DocumentosCreate, db: Session = Depends(get_db)):
+async def add_documentos(transaction_id: int, traveler_id: int, data: DocumentosCreate, db: Session = Depends(get_db)):
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
-        raise HTTPException(status_code=404, detail=f"Transaction{transaction_id} no encontrada")
-    
-    new_documento = Documentos(
-         transaction_id=transaction_id,
-         viajero_id=traveler_id,
-         document_url=document_url,
-         tipo_documento=tipo_documento
-     )
-     db.add(new_documento)
-     db.commit()
-     db.refresh(new_documento)
-     return {"message": "Documento agregado con éxito", "documento": new_documento}  
+        raise HTTPException(status_code=404, detail=f"Transaction {transaction_id} no encontrada")
 
+    new_documento = Documentos(
+        transaction_id=transaction_id,
+        viajero_id=traveler_id,
+        document_url=data.document_url,
+        tipo_documento=data.tipo_documento
+    )
+
+    db.add(new_documento)
+    db.commit()
+    db.refresh(new_documento)
+
+    return {"message": "Documento agregado con éxito", "documento": new_documento}
 
 
 # @router.post("/{transaction_id}/documentos/{traveler_id}", status_code=201)
