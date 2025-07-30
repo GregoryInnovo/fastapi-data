@@ -295,7 +295,7 @@ def list_transactions(db: Session = Depends(get_db)):
             "travelers": transaction.travelers,
             "travel_info": transaction.travel_info,
             "documentos": transaction.documentos,
-            "evidence": [
+            "evidences": [
                 {
                 "id": evidence.id,
                 "transaction_id": evidence.transaction_id,
@@ -546,6 +546,17 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
                 transaction_id=existing_transaction.id
             )
             db.add(traveler)
+    
+    if transaction.travel_info is not None:
+        for traveler_info in transaction.travel_info:
+            travel_info = TravelInfo(
+                transaction_id=existing_transaction.id,
+                hotel=traveler_info.hotel,
+                noches=traveler_info.noches,
+                incluye=traveler_info.incluye,
+                no_incluye=traveler_info.no_incluye
+            )
+            db.add(traveler_info)
 
     db.commit()
     return {"message": "Transacción actualizada con éxito", "transaction": existing_transaction}
@@ -921,51 +932,71 @@ def list_all_travel_info(db: Session = Depends(get_db)):
         raise HTTPException(status_code = 404, detail = "No se encontraron registros de informacion de viaje")
     return travel_info
 
+
 @router.post("/{transaction_id}/documentos/{traveler_id}", status_code=201)
-# async def add_documentos(transaction_id: int, traveler_id: int, documentos: DocumentosCreate, db: Session = Depends(get_db)):
-async def add_documentos(transaction_id: int, traveler_id: int, document_file: UploadFile = File(...), tipo_documento: str = Form(...), db: Session = Depends(get_db)):
+async def add_documentos(transaction_id: int,  traveler_id: int, data: DocumentosCreate, db: Session = Depends(get_db)):
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
-        raise HTTPException(status_code=404, detail="Transacción no encontrada")
-
-    #Upload the document file to a storage service (AWS S3) retrive the url
-    url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/dc87c6e6-7f0b-4734-965e-89ab5d5b7b00"
-    image_bytes = await document_file.read()
-    #data = {"data": base64_encoded_file}
-    files = {"data": (document_file.filename,
-                        image_bytes, "application/octet-stream")}      
-    # image_bytes = await documentos.document_file.read()
-    # base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
-    #image_bytes = await document_file.read()
-    #base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
-    #data = {"data": base64_encoded_file}
-    headers = {"Content-Type": "application/json"}
-    res = requests.post(url, files=files)
-    if res.status_code != 200:
-        raise HTTPException(status_code=500, detail="Error al subir el documento")
-    print(res.text)
-    try:
-        payload_resp = res.json()  # parsea el JSON
-        document_url = payload_resp.get("imageUrl")
-    except:
-        texto = res.text.strip()
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "El servicio de storage no devolvió un JSON válido. "
-                f"Contenido bruto: {texto!r}"
-            )
-        )
+        raise HTTPException(status_code=404, detail=f"Transaction{transaction_id} no encontrada")
+    
     new_documento = Documentos(
-        transaction_id=transaction_id,
-        viajero_id=traveler_id,
-        document_url=document_url,
-        tipo_documento=tipo_documento
-    )
-    db.add(new_documento)
-    db.commit()
-    db.refresh(new_documento)
-    return {"message": "Documento agregado con éxito", "documento": new_documento}
+         transaction_id=transaction_id,
+         viajero_id=traveler_id,
+         document_url=document_url,
+         tipo_documento=tipo_documento
+     )
+     db.add(new_documento)
+     db.commit()
+     db.refresh(new_documento)
+     return {"message": "Documento agregado con éxito", "documento": new_documento}  
+
+
+
+# @router.post("/{transaction_id}/documentos/{traveler_id}", status_code=201)
+# # async def add_documentos(transaction_id: int, traveler_id: int, documentos: DocumentosCreate, db: Session = Depends(get_db)):
+# async def add_documentos(transaction_id: int, traveler_id: int, document_file: UploadFile = File(...), tipo_documento: str = Form(...), db: Session = Depends(get_db)):
+#     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+#     if not transaction:
+#         raise HTTPException(status_code=404, detail="Transacción no encontrada")
+
+#     #Upload the document file to a storage service (AWS S3) retrive the url
+#     url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/dc87c6e6-7f0b-4734-965e-89ab5d5b7b00"
+#     image_bytes = await document_file.read()
+#     #data = {"data": base64_encoded_file}
+#     files = {"data": (document_file.filename,
+#                         image_bytes, "application/octet-stream")}      
+#     # image_bytes = await documentos.document_file.read()
+#     # base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
+#     #image_bytes = await document_file.read()
+#     #base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
+#     #data = {"data": base64_encoded_file}
+#     headers = {"Content-Type": "application/json"}
+#     res = requests.post(url, files=files)
+#     if res.status_code != 200:
+#         raise HTTPException(status_code=500, detail="Error al subir el documento")
+#     print(res.text)
+#     try:
+#         payload_resp = res.json()  # parsea el JSON
+#         document_url = payload_resp.get("imageUrl")
+#     except:
+#         texto = res.text.strip()
+#         raise HTTPException(
+#             status_code=500,
+#             detail=(
+#                 "El servicio de storage no devolvió un JSON válido. "
+#                 f"Contenido bruto: {texto!r}"
+#             )
+#         )
+#     new_documento = Documentos(
+#         transaction_id=transaction_id,
+#         viajero_id=traveler_id,
+#         document_url=document_url,
+#         tipo_documento=tipo_documento
+#     )
+#     db.add(new_documento)
+#     db.commit()
+#     db.refresh(new_documento)
+#     return {"message": "Documento agregado con éxito", "documento": new_documento}
 
 @router.get("/{transaction_id}/documentos")
 def get_documentos_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
