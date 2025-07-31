@@ -67,6 +67,12 @@ class TravelInfo(Base):
     noches = Column(Integer, nullable=True)
     incluye = Column(ARRAY(String), nullable=True)
     no_incluye = Column(ARRAY(String), nullable=True)
+    alimentacion = Column(String, nullable=True)
+    acomodacion = Column(String, nullable=True)
+    direccion_hotel = Column(String, nullable=True)
+    pais_destino = Column(String, nullable=True)
+    ciudad_destino = Column(String, nullable=True)
+
  
 
     transaction = relationship("Transaction", back_populates="travel_info")

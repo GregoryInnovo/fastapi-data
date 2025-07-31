@@ -65,12 +65,22 @@ class TravelInfoCrerate(BaseModel):
     noches: int = None
     incluye: list = None
     no_incluye: list = None
+    alimentacion: str = None
+    acomodacion: str = None
+    direccion_hotel: str = None
+    pais_destino: str = None
+    ciudad_destino: str = None
 
 class TravelInfoUpdate(BaseModel):
     hotel: Optional[str] = None
     noches: Optional[int] = None
     incluye: Optional[list] = None
     no_incluye: Optional[list] = None
+    alimentacion: Optional[str] = None
+    acomodacion: Optional[str] = None
+    direccion_hotel: Optional[str] = None
+    pais_destino: Optional[str] = None
+    ciudad_destino: Optional[str] = None
 
 
 class DocumentosCreate(BaseModel):
@@ -556,6 +566,11 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
                 noches=travel_info_data.noches,
                 incluye=travel_info_data.incluye,
                 no_incluye=travel_info_data.no_incluye
+                alimentacion = travel_info.alimentacion,
+                acomodacion =  travel_info.acomodacion,
+                direccion_hotel = travel_info.direccion_hotel,
+                pais_destino = travel_info.pais_destino,
+                ciudad_destino = travel_info.ciudad_destino
             )
             db.add(travel_info)
 
@@ -923,7 +938,12 @@ def create_travel_info(transaction_id: int, travel_info: TravelInfoCrerate, db: 
         hotel = travel_info.hotel,
         noches = travel_info.noches,
         incluye = travel_info.incluye,
-        no_incluye = travel_info.no_incluye
+        no_incluye = travel_info.no_incluye,
+        alimentacion = travel_info.alimentacion,
+        acomodacion =  travel_info.acomodacion,
+        direccion_hotel = travel_info.direccion_hotel,
+        pais_destino = travel_info.pais_destino,
+        ciudad_destino = travel_info.ciudad_destino
     )
 
     db.add(new_travel_info)
