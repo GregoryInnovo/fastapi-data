@@ -1090,5 +1090,105 @@ def list_all_documentos(db: Session = Depends(get_db)):
     return documentos
 
 
-# @router.get("")
-# def get_transaction_payments
+@router.get("/user/paid/{id_user}")
+def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
+    # Obtener todas las transacciones del vendedor con sus evidencias
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.seller_id == id_user)
+        .options(selectinload(Transaction.evidences))
+        .all()
+    )
+    
+    if not transactions:
+        raise HTTPException(
+            status_code=404, 
+            detail="No se encontraron transacciones totalmente pagadas para este vendedor"
+        )
+    
+    # Filtrar las transacciones que están completamente pagadas
+    paid_transactions = []
+    for transaction in transactions:
+        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        if total_paid >= transaction.amount:  # >= por si hay sobrepagos
+            paid_transactions.append({
+                "id": transaction.id,
+                "client_name": transaction.client_name,
+                "package": transaction.package,
+                "total_amount": transaction.amount,
+                "total_paid": total_paid,
+                "status": transaction.status,
+                "created_at": transaction.created_at,
+                "evidences": [
+                    {
+                        "id": evidence.id,
+                        "amount": evidence.amount,
+                        "evidence_file": evidence.evidence_file,
+                        "upload_date": evidence.upload_date
+                    } for evidence in transaction.evidences
+                ]
+            })
+    
+    return {
+        "seller_id": id_user,
+        "total_paid_transactions": len(paid_transactions),
+        "transactions": paid_transactions
+    }
+
+
+@router.get("/admin/paid-transactions")
+def get_all_paid_transactions(db: Session = Depends(get_db)):
+    # Obtener todas las transacciones con sus evidencias
+    transactions = (
+        db.query(Transaction)
+        .options(
+            selectinload(Transaction.evidences),
+            selectinload(Transaction.seller)
+        )
+        .all()
+    )
+    
+    if not transactions:
+        raise HTTPException(
+            status_code=404, 
+            detail="No se encontraron transacciones en el sistema"
+        )
+    
+    # Filtrar las transacciones que están completamente pagadas
+    paid_transactions = []
+    for transaction in transactions:
+        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        if total_paid >= transaction.amount:  # >= por si hay sobrepagos
+            paid_transactions.append({
+                "id": transaction.id,
+                "client_name": transaction.client_name,
+                "package": transaction.package,
+                "total_amount": transaction.amount,
+                "total_paid": total_paid,
+                "status": transaction.status,
+                "created_at": transaction.created_at,
+                "seller": {
+                    "id": transaction.seller.id,
+                    "name": transaction.seller.name,
+                    "email": transaction.seller.email
+                } if transaction.seller else None,
+                "evidences": [
+                    {
+                        "id": evidence.id,
+                        "amount": evidence.amount,
+                        "evidence_file": evidence.evidence_file,
+                        "upload_date": evidence.upload_date
+                    } for evidence in transaction.evidences
+                ]
+            })
+    
+    # Calcular estadísticas
+    total_amount = sum(t["total_amount"] for t in paid_transactions)
+    total_paid = sum(t["total_paid"] for t in paid_transactions)
+    
+    return {
+        "total_paid_transactions": len(paid_transactions),
+        "total_amount": total_amount,
+        "total_paid": total_paid,
+        "transactions": paid_transactions
+    }
