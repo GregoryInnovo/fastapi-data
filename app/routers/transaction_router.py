@@ -79,7 +79,7 @@ class DocumentosCreate(BaseModel):
     filename: str
 
 class DocumentosUpdate(BaseModel):
-    document_url: Optional[str] = None
+    document_file: Optional[str] = None
     tipo_documento: Optional[str] = None
 
 class TransactionCreate(BaseModel):
@@ -986,7 +986,7 @@ async def add_documentos(transaction_id: int, traveler_id: int, data: Documentos
     new_documento = Documentos(
         transaction_id=transaction_id,
         viajero_id=traveler_id,
-        document_url=data.document_url,
+        document_url=data.document_file,
         tipo_documento=data.tipo_documento
     )
 
