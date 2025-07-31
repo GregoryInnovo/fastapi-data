@@ -565,7 +565,7 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
                 hotel=travel_info_data.hotel,
                 noches=travel_info_data.noches,
                 incluye=travel_info_data.incluye,
-                no_incluye=travel_info_data.no_incluye
+                no_incluye=travel_info_data.no_incluye,
                 alimentacion = travel_info.alimentacion,
                 acomodacion =  travel_info.acomodacion,
                 direccion_hotel = travel_info.direccion_hotel,
@@ -949,6 +949,8 @@ def create_travel_info(transaction_id: int, travel_info: TravelInfoCrerate, db: 
     db.add(new_travel_info)
     db.commit()
     db.refresh(new_travel_info)
+    return {"message": "Travel Info upload", "travel_info": new_travel_info}
+
 
 @router.get("/{transaction_id}/travel_info")
 def get_travel_info_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
@@ -1086,3 +1088,7 @@ def list_all_documentos(db: Session = Depends(get_db)):
     if not documentos:
         raise HTTPException(status_code=404, detail="No se encontraron documentos")
     return documentos
+
+
+# @router.get("")
+# def get_transaction_payments
