@@ -34,6 +34,11 @@ class TravelerCreate(BaseModel):
     date_birth: date
     phone: str
 
+class TravelerUpdate(BaseModel):
+    name: Optional[str]
+    dni: Optional[str]
+    date_birth: Optional[date]
+    phone: Optional[str]
 
 class ItinerarioCreate(BaseModel):
     aerolinea: str
@@ -530,7 +535,7 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
 
     # Actualizar viajeros
     if transaction.travelers is not None:
-        db.query(Traveler).filter(Traveler.transaction_id == transaction_id).delete()
+        #db.query(Traveler).filter(Traveler.transaction_id == transaction_id).delete()
         for traveler_data in transaction.travelers:
             traveler = Traveler(
                 name=traveler_data.name,
@@ -543,7 +548,7 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
     
     # Actualizar información de viaje
     if transaction.travel_info is not None:
-        db.query(TravelInfo).filter(TravelInfo.transaction_id == transaction_id).delete()
+        #db.query(TravelInfo).filter(TravelInfo.transaction_id == transaction_id).delete()
         for travel_info_data in transaction.travel_info:
             travel_info = TravelInfo(
                 transaction_id=existing_transaction.id,
@@ -556,7 +561,7 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
 
     # Actualizar itinerario
     if transaction.itinerario is not None:
-        db.query(Itinerario).filter(Itinerario.transaction_id == transaction_id).delete()
+        #db.query(Itinerario).filter(Itinerario.transaction_id == transaction_id).delete()
         for itinerario_data in transaction.itinerario:
             itinerario = Itinerario(
                 transaction_id=existing_transaction.id,
@@ -602,7 +607,7 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
     }
     
 @router.patch("/{transaction_id}/travelers/{traveler_id}", status_code=200)
-def update_traveler(transaction_id: int, traveler_id: int, traveler_data: TravelerCreate, db: Session = Depends(get_db)):
+def update_traveler(transaction_id: int, traveler_id: int, traveler_data: TravelerUpdate, db: Session = Depends(get_db)):
     # Verificar si la transacción existe
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
@@ -624,8 +629,8 @@ def update_traveler(transaction_id: int, traveler_id: int, traveler_data: Travel
         traveler.phone = traveler_data.phone
 
 
-    db.refresh(traveler)
     db.commit()
+    db.refresh(traveler)
 
     return {"message": "Viajero actualizado con éxito", "traveler": traveler}
 
