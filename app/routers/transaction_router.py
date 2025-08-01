@@ -180,12 +180,11 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
                 incluye=info.incluye,
                 no_incluye=info.no_incluye,
                 transaction_id=new_transaction.id,
-                alimentacion = travel_info.alimentacion,
-                acomodacion =  travel_info.acomodacion,
-                direccion_hotel = travel_info.direccion_hotel,
-                pais_destino = travel_info.pais_destino,
-                ciudad_destino = travel_info.ciudad_destino
-
+                alimentacion = info.alimentacion,
+                acomodacion =  info.acomodacion,
+                direccion_hotel = info.direccion_hotel,
+                pais_destino = info.pais_destino,
+                ciudad_destino = info.ciudad_destino
             )
             db.add(travel_info)
     # if transaction.evidence and transaction.evidence.evidence_file[:5] != "https":
