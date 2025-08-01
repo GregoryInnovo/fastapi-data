@@ -262,6 +262,7 @@ def get_all_transaction_test(db: Session = Depends(get_db)):
             selectinload(Transaction.travel_info),
             selectinload(Transaction.itinerario)
         )
+        .order_by(Transaction.id.desc())
         .all()
     )
     if not transactions:
