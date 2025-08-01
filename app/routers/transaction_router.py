@@ -463,7 +463,7 @@ def filter_transactions_by_status(status: TransactionStatus, db: Session = Depen
 
 @router.get("/seller/{seller_id}")
 def get_transactions_by_seller(seller_id: int, db: Session = Depends(get_db)):
-    transactions = db.query(Transaction).filter(Transaction.seller_id == seller_id).all()
+    transactions = db.query(Transaction).filter(Transaction.seller_id == seller_id).order_by(Transaction.id.desc()).all()
     if not transactions:
         raise HTTPException(status_code=404, detail="No se encontraron transacciones para este vendedor")
     
