@@ -945,6 +945,12 @@ def update_travel_info_by_transaction_id(transaction_id: int, travel_info_id: in
         travel_info.incluye = data.incluye
     if data.no_incluye is not None:
         travel_info.no_incluye = data.no_incluye
+    if data.alimentacion is not None:
+        travel_info.alimentacion = data.alimentacion
+    if data.direccion_hotel is not None:
+        travel_info.direccion_hotel = data.direccion_hotel
+    if data.ciudad_destino is not None:
+        travel_info.ciudad_destino = data.ciudad_destino
 
     db.commit()
     db.refresh(travel_info)
