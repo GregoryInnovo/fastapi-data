@@ -153,5 +153,6 @@ class Factura(Base):
     pago_efectivo = Column(Boolean, default=False)
     nota_importante_contenido = Column(String, nullable=True)
     nota_condicion_pago = Column(String, nullable=True)
-
+    monto_total_acumulado = Column(Float, nullable=False)
+    
     transaction = relationship("Transaction", back_populates="Factura")

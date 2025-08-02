@@ -184,7 +184,7 @@ class FacturaUpdate(BaseModel):
     pago_efectivo: Optional[bool] = None
     nota_importante_contenido: Optional[str] = None
     nota_condicion_pago: Optional[str] = None
-    monto_total_acumulado = Optional[float] = None   
+    monto_total_acumulado: Optional[float] = None   
 
 
 @router.post("/", status_code=201)
