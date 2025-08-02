@@ -821,7 +821,7 @@ def filter_transactions_mixed(
                     "hora_salida": itinerary.hora_salida,
                     "hora_llegada": itinerary.hora_llegada
 
-                } for itinerary in transaction.itineraries
+                } for itinerary in transaction.itinerario
             ]
         })
     
@@ -1350,7 +1350,7 @@ def get_facturas_by_transaction(transaction_id: int, db: Session = Depends(get_d
         .order_by(Factura.fecha_compra)
         .all()
     )
-    
+
     if not facturas:
         raise HTTPException(status_code=404, detail="No se encontraron facturas para esta transacción")
     
