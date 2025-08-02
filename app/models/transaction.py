@@ -1,6 +1,8 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, Enum, Date
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
+from sqlalchemy import Boolean
+from datetime import date
 from app.db.database import Base
 from datetime import datetime, timezone
 import enum
@@ -122,3 +124,34 @@ class Transaction(Base):
     evidences = relationship("Evidence", back_populates="transaction")
     travel_info = relationship("TravelInfo", back_populates="transaction")
     documentos = relationship("Documentos", back_populates="transaction")
+    factura = relationship("Factura", back_populates="transaction", uselist=False)
+
+class Factura(Base):
+    __tablename__ = "factura"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=False)
+    reserva_numero = Column(String, nullable=False)
+    fecha_compra = Column(Date, nullable=False)
+    agencia_nombre = Column(String, nullable=False)
+    nit_agencia = Column(String, nullable=False)
+    rnt_agencia = Column(String, nullable=False)
+    cliente_nombre = Column(String, nullable=False)
+    cliente_documento = Column(String, nullable=False)
+    pais_destino = Column(String, nullable=False)
+    ciudad_salida = Column(String, nullable=False)
+    ciudad_llegada = Column(String, nullable=False)
+    fecha_inicio_viaje = Column(Date, nullable=False)
+    fecha_regreso_viaje = Column(Date, nullable=False)
+    hotel_nombre = Column(String, nullable=True)
+    num_noches = Column(Integer, nullable=True)
+    tarifa_por_pasajero = Column(Float, nullable=False)
+    tarifa_por_niño = Column(Float, nullable=True)
+    abono = Column(Float, nullable=True)
+    cuentas_recaudo = Column(JSONB, nullable=True)
+    pago_transferencia = Column(Boolean, default=False)
+    pago_efectivo = Column(Boolean, default=False)
+    nota_importante_contenido = Column(String, nullable=True)
+    nota_condicion_pago = Column(String, nullable=True)
+
+    transaction = relationship("Transaction", back_populates="factura")

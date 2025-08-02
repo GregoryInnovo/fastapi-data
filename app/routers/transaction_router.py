@@ -10,7 +10,8 @@ from app.models.transaction import (Transaction,
  Evidence, 
  Itinerario,
  TravelInfo,
- Documentos
+ Documentos,
+ Factura
  )
 from app.db.database import get_db
 from pydantic import BaseModel
@@ -134,7 +135,54 @@ class TransactionUpdate(BaseModel):
     travel_info: Optional[List[TravelInfoCrerate]] = None
     evidence: Optional[EvidenceCreate] = None
     itinerario: Optional[List[ItinerarioCreate]] = None
-   
+
+class FacturaCreate(BaseModel):
+    reserva_numero: str
+    fecha_compra: date
+    agencia_nombre: str
+    nit_agencia: str
+    rnt_agencia: str
+    cliente_nombre: str
+    cliente_documento: str
+    pais_destino: str
+    ciudad_salida: str
+    ciudad_llegada: str
+    fecha_inicio_viaje: date
+    fecha_regreso_viaje: date
+    hotel_nombre: Optional[str] = None
+    num_noches: Optional[int] = None
+    tarifa_por_pasajero: float
+    tarifa_por_niño: Optional[float] = None
+    abono: Optional[float] = None
+    cuentas_recaudo: Optional[List[CuentasRecaudo]] = None
+    pago_transferencia: bool = False
+    pago_efectivo: bool = False
+    nota_importante_contenido: Optional[str] = None
+    nota_condicion_pago: Optional[str] = None
+
+class FacturaUpdate(BaseModel):
+    reserva_numero: Optional[str] = None
+    fecha_compra: Optional[date] = None
+    agencia_nombre: Optional[str] = None
+    nit_agencia: Optional[str] = None
+    rnt_agencia: Optional[str] = None
+    cliente_nombre: Optional[str] = None
+    cliente_documento: Optional[str] = None
+    pais_destino: Optional[str] = None
+    ciudad_salida: Optional[str] = None
+    ciudad_llegada: Optional[str] = None
+    fecha_inicio_viaje: Optional[date] = None
+    fecha_regreso_viaje: Optional[date] = None
+    hotel_nombre: Optional[str] = None
+    num_noches: Optional[int] = None
+    tarifa_por_pasajero: Optional[float] = None
+    tarifa_por_niño: Optional[float] = None
+    abono: Optional[float] = None
+    cuentas_recaudo: Optional[List[CuentasRecaudo]] = None
+    pago_transferencia: Optional[bool] = None
+    pago_efectivo: Optional[bool] = None
+    nota_importante_contenido: Optional[str] = None
+    nota_condicion_pago: Optional[str] = None   
 
 
 @router.post("/", status_code=201)
@@ -1121,6 +1169,7 @@ def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
         db.query(Transaction)
         .filter(Transaction.seller_id == id_user)
         .options(selectinload(Transaction.evidences))
+        .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
     
@@ -1168,8 +1217,9 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
         db.query(Transaction)
         .options(
             selectinload(Transaction.evidences),
-            selectinload(Transaction.seller)
+            selectinload(Transaction.seller),
         )
+        .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
     
@@ -1221,3 +1271,63 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
         "total_pending": total_pending,
         "transactions": unpaid_transactions
     }
+
+# Endpoints para la factura
+@router.post("/{transaction_id}/factura", status_code=201)
+def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = Depends(get_db)):
+    # Verificar si la transacción existe
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    
+    # Verificar si ya existe una factura para esta transacción
+    existing_factura = db.query(Factura).filter(Factura.transaction_id == transaction_id).first()
+    if existing_factura:
+        raise HTTPException(status_code=400, detail="Ya existe una factura para esta transacción")
+
+    # Crear nueva factura
+    new_factura = Factura(
+        transaction_id=transaction_id,
+        **factura.dict()
+    )
+    
+    db.add(new_factura)
+    db.commit()
+    db.refresh(new_factura)
+    
+    return {"message": "Factura creada con éxito", "factura": new_factura}
+
+@router.get("/{transaction_id}/factura")
+def get_factura(transaction_id: int, db: Session = Depends(get_db)):
+    # Verificar si la transacción existe
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    
+    # Buscar la factura
+    factura = db.query(Factura).filter(Factura.transaction_id == transaction_id).first()
+    if not factura:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    
+    return factura
+
+@router.patch("/{transaction_id}/factura", status_code=200)
+def update_factura(transaction_id: int, factura_data: FacturaUpdate, db: Session = Depends(get_db)):
+    # Verificar si la transacción existe
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    
+    # Buscar la factura
+    factura = db.query(Factura).filter(Factura.transaction_id == transaction_id).first()
+    if not factura:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    
+    # Actualizar solo los campos que no son None
+    for field, value in factura_data.dict(exclude_unset=True).items():
+        setattr(factura, field, value)
+    
+    db.commit()
+    db.refresh(factura)
+    
+    return {"message": "Factura actualizada con éxito", "factura": factura}
