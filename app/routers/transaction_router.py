@@ -1284,36 +1284,91 @@ def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = De
     if not transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     
-    # Verificar si ya existe una factura para esta transacción
-    existing_factura = db.query(Factura).filter(Factura.transaction_id == transaction_id).first()
-    if existing_factura:
-        raise HTTPException(status_code=400, detail="Ya existe una factura para esta transacción")
+    # Obtener la última factura para calcular el monto total acumulado
+    facturas_previas = (
+        db.query(Factura)
+        .filter(Factura.transaction_id == transaction_id)
+        .all()
+    )
+    
+    # Calcular el monto total acumulado sumando los abonos de facturas anteriores
+    monto_total_acumulado = sum(f.abono for f in facturas_previas) + factura.abono
 
     # Crear nueva factura
     new_factura = Factura(
         transaction_id=transaction_id,
-        **factura.dict()
+        reserva_numero=factura.reserva_numero,
+        fecha_compra=factura.fecha_compra,
+        agencia_nombre=factura.agencia_nombre,
+        nit_agencia=factura.nit_agencia,
+        rnt_agencia=factura.rnt_agencia,
+        cliente_nombre=factura.cliente_nombre,
+        cliente_documento=factura.cliente_documento,
+        pais_destino=factura.pais_destino,
+        ciudad_salida=factura.ciudad_salida,
+        ciudad_llegada=factura.ciudad_llegada,
+        fecha_inicio_viaje=factura.fecha_inicio_viaje,
+        fecha_regreso_viaje=factura.fecha_regreso_viaje,
+        hotel_nombre=factura.hotel_nombre,
+        num_noches=factura.num_noches,
+        tarifa_por_pasajero=factura.tarifa_por_pasajero,
+        tarifa_por_niño=factura.tarifa_por_niño,
+        abono=factura.abono,
+        cuentas_recaudo=factura.cuentas_recaudo,
+        pago_transferencia=factura.pago_transferencia,
+        pago_efectivo=factura.pago_efectivo,
+        nota_importante_contenido=factura.nota_importante_contenido,
+        nota_condicion_pago=factura.nota_condicion_pago,
+        monto_total_acumulado=monto_total_acumulado
     )
     
     db.add(new_factura)
     db.commit()
     db.refresh(new_factura)
     
-    return {"message": "Factura creada con éxito", "factura": new_factura}
+    return {
+        "message": "Factura creada con éxito",
+        "factura": {
+            **new_factura.__dict__,
+            "abono_actual": new_factura.abono,
+            "monto_total_acumulado": new_factura.monto_total_acumulado,
+            "saldo_pendiente": transaction.amount - monto_total_acumulado
+        }
+    }
 
-@router.get("/{transaction_id}/factura")
-def get_factura(transaction_id: int, db: Session = Depends(get_db)):
+@router.get("/{transaction_id}/facturas")
+def get_facturas_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
     # Verificar si la transacción existe
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     
-    # Buscar la factura
-    factura = db.query(Factura).filter(Factura.transaction_id == transaction_id).first()
-    if not factura:
-        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    # Buscar todas las facturas de la transacción
+    facturas = (
+        db.query(Factura)
+        .filter(Factura.transaction_id == transaction_id)
+        .order_by(Factura.fecha_compra)
+        .all()
+    )
     
-    return factura
+    if not facturas:
+        raise HTTPException(status_code=404, detail="No se encontraron facturas para esta transacción")
+    
+    # Preparar la respuesta con los cálculos necesarios
+    facturas_response = []
+    for factura in facturas:
+        facturas_response.append({
+            **factura.__dict__,
+            "abono_actual": factura.abono,
+            "monto_total_acumulado": factura.monto_total_acumulado,
+            "saldo_pendiente": transaction.amount - factura.monto_total_acumulado
+        })
+    
+    return {
+        "transaction_id": transaction_id,
+        "monto_total_transaccion": transaction.amount,
+        "facturas": facturas_response
+    }
 
 @router.patch("/{transaction_id}/factura", status_code=200)
 def update_factura(transaction_id: int, factura_data: FacturaUpdate, db: Session = Depends(get_db)):
