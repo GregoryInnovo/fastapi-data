@@ -187,53 +187,7 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
                 ciudad_destino = info.ciudad_destino
             )
             db.add(travel_info)
-    # if transaction.evidence and transaction.evidence.evidence_file[:5] != "https":
-    #     base64_string = transaction.evidence.evidence_file
-    #     filename = transaction.evidence.filename
-    #     # Elimina encabezado "data:image/png;base64,..." si existe
-    #     if "," in base64_string:
-    #         base64_string = base64_string.split(",")[1]
-    #     image_data = base64.b64decode(base64_string)
-    #     file = BytesIO(image_data)
-    #     file.name = filename+".jpeg"
-        
 
-    #     url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/6e0954b7-832f-4817-86cd-9c59f18d8a52"
-    #     image_bytes = file
-    #     files = {"data": (file.name,
-    #                         image_bytes, "application/octet-stream")} 
-    #     headers = {"Content-Type": "application/json"}
-    #     res = requests.post(url, files=files)
-    #     if res.status_code != 200:
-    #         raise HTTPException(status_code=500, detail="Error al subir el documento")
-    #     print(res.text)
-    #     try:
-    #         payload_resp = res.json()  # parsea el JSON
-    #         document_url = payload_resp[0].get("imageUrl")
-    #     except:
-    #         texto = res.text.strip()
-    #         raise HTTPException(
-    #             status_code=500,
-    #             detail=(
-    #                 "El servicio de storage no devolvió un JSON válido. "
-    #                 f"Contenido bruto: {texto!r}"
-    #             )
-    #         )
-
-
-    #     evidence = Evidence(
-    #         evidence_file=document_url,
-    #         amount=transaction.evidence.amount,
-    #         transaction_id=new_transaction.id
-    #     )
-    #     db.add(evidence)
-    # if transaction.evidence and transaction.evidence.evidence_file[:5] == "https":
-        # evidence = Evidence(
-        #     evidence_file=transaction.evidence.evidence_file,
-        #     amount=transaction.evidence.amount,
-        #     transaction_id=new_transaction.id
-        # )
-        # db.add(evidence)
     
     if transaction.itinerario:
         for itinerario in transaction.itinerario:
@@ -1025,51 +979,6 @@ async def add_documentos(transaction_id: int, traveler_id: int, data: Documentos
     return {"message": "Documento agregado con éxito", "documento": new_documento}
 
 
-# @router.post("/{transaction_id}/documentos/{traveler_id}", status_code=201)
-# # async def add_documentos(transaction_id: int, traveler_id: int, documentos: DocumentosCreate, db: Session = Depends(get_db)):
-# async def add_documentos(transaction_id: int, traveler_id: int, document_file: UploadFile = File(...), tipo_documento: str = Form(...), db: Session = Depends(get_db)):
-#     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
-#     if not transaction:
-#         raise HTTPException(status_code=404, detail="Transacción no encontrada")
-
-#     #Upload the document file to a storage service (AWS S3) retrive the url
-#     url = "https://elder-link-staging-n8n.fwoasm.easypanel.host/webhook/dc87c6e6-7f0b-4734-965e-89ab5d5b7b00"
-#     image_bytes = await document_file.read()
-#     #data = {"data": base64_encoded_file}
-#     files = {"data": (document_file.filename,
-#                         image_bytes, "application/octet-stream")}      
-#     # image_bytes = await documentos.document_file.read()
-#     # base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
-#     #image_bytes = await document_file.read()
-#     #base64_encoded_file = base64.b64encode(image_bytes).decode("utf-8")
-#     #data = {"data": base64_encoded_file}
-#     headers = {"Content-Type": "application/json"}
-#     res = requests.post(url, files=files)
-#     if res.status_code != 200:
-#         raise HTTPException(status_code=500, detail="Error al subir el documento")
-#     print(res.text)
-#     try:
-#         payload_resp = res.json()  # parsea el JSON
-#         document_url = payload_resp.get("imageUrl")
-#     except:
-#         texto = res.text.strip()
-#         raise HTTPException(
-#             status_code=500,
-#             detail=(
-#                 "El servicio de storage no devolvió un JSON válido. "
-#                 f"Contenido bruto: {texto!r}"
-#             )
-#         )
-#     new_documento = Documentos(
-#         transaction_id=transaction_id,
-#         viajero_id=traveler_id,
-#         document_url=document_url,
-#         tipo_documento=tipo_documento
-#     )
-#     db.add(new_documento)
-#     db.commit()
-#     db.refresh(new_documento)
-#     return {"message": "Documento agregado con éxito", "documento": new_documento}
 
 @router.get("/{transaction_id}/documentos")
 def get_documentos_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
@@ -1197,4 +1106,112 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
         "total_amount": total_amount,
         "total_paid": total_paid,
         "transactions": paid_transactions
+    }
+
+@router.get("/user/unpaid/{id_user}")
+def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
+    # Obtener todas las transacciones del vendedor con sus evidencias
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.seller_id == id_user)
+        .options(selectinload(Transaction.evidences))
+        .all()
+    )
+    
+    if not transactions:
+        raise HTTPException(
+            status_code=404, 
+            detail="No se encontraron transacciones para este vendedor"
+        )
+    
+    # Filtrar las transacciones que NO están completamente pagadas
+    unpaid_transactions = []
+    for transaction in transactions:
+        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        if total_paid < transaction.amount:  # < para identificar las que faltan por pagar
+            pending_amount = transaction.amount - total_paid
+            unpaid_transactions.append({
+                "id": transaction.id,
+                "client_name": transaction.client_name,
+                "package": transaction.package,
+                "total_amount": transaction.amount,
+                "total_paid": total_paid,
+                "pending_amount": pending_amount,
+                "status": transaction.status,
+                "created_at": transaction.created_at,
+                "evidences": [
+                    {
+                        "id": evidence.id,
+                        "amount": evidence.amount,
+                        "evidence_file": evidence.evidence_file,
+                        "upload_date": evidence.upload_date
+                    } for evidence in transaction.evidences
+                ]
+            })
+    
+    return {
+        "seller_id": id_user,
+        "total_unpaid_transactions": len(unpaid_transactions),
+        "transactions": unpaid_transactions
+    }
+
+@router.get("/admin/unpaid-transactions")
+def get_all_unpaid_transactions(db: Session = Depends(get_db)):
+    # Obtener todas las transacciones con sus evidencias y vendedor
+    transactions = (
+        db.query(Transaction)
+        .options(
+            selectinload(Transaction.evidences),
+            selectinload(Transaction.seller)
+        )
+        .all()
+    )
+    
+    if not transactions:
+        raise HTTPException(
+            status_code=404, 
+            detail="No se encontraron transacciones en el sistema"
+        )
+    
+    # Filtrar las transacciones que NO están completamente pagadas
+    unpaid_transactions = []
+    for transaction in transactions:
+        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        if total_paid < transaction.amount:  # < para identificar las que faltan por pagar
+            pending_amount = transaction.amount - total_paid
+            unpaid_transactions.append({
+                "id": transaction.id,
+                "client_name": transaction.client_name,
+                "package": transaction.package,
+                "total_amount": transaction.amount,
+                "total_paid": total_paid,
+                "pending_amount": pending_amount,
+                "status": transaction.status,
+                "created_at": transaction.created_at,
+                "seller": {
+                    "id": transaction.seller.id,
+                    "name": transaction.seller.name,
+                    "email": transaction.seller.email
+                } if transaction.seller else None,
+                "evidences": [
+                    {
+                        "id": evidence.id,
+                        "amount": evidence.amount,
+                        "evidence_file": evidence.evidence_file,
+                        "upload_date": evidence.upload_date
+                    } for evidence in transaction.evidences
+                ]
+            })
+    
+    # Calcular estadísticas
+    total_amount = sum(t["total_amount"] for t in unpaid_transactions)
+    total_paid = sum(t["total_paid"] for t in unpaid_transactions)
+    total_pending = sum(t["pending_amount"] for t in unpaid_transactions)
+    
+    return {
+        "total_unpaid_transactions": len(unpaid_transactions),
+        "total_amount": total_amount,
+        "total_paid": total_paid,
+        "total_pending": total_pending,
+        "transactions": unpaid_transactions
     }
