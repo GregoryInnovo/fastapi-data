@@ -20,6 +20,10 @@ class CuentasRecaudo(Base):
     __tablename__ = "cuentas_recaudo"
 
     id = Column(Integer, primary_key=True, index=True)
+    banco = Column(String, nullable=False)
+    numero_cuenta = Column(String, nullable=False)
+    tipo_cuenta = Column(String, nullable=False)
+    titular = Column(String, nullable=False)
 
 class Traveler(Base):
     __tablename__ = "travelers"

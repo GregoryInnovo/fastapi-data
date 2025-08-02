@@ -249,7 +249,7 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
     db.commit()
     return {"message": "Transacción creada con éxito", "transaction_id": new_transaction.id}
 
-@router.get("/", status_code=201)
+@router.get("/", status_code=200)
 def get_all_transaction_test(db: Session = Depends(get_db)):
     transactions = (
         db.query(Transaction)
