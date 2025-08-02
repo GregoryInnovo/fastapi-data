@@ -124,7 +124,7 @@ class Transaction(Base):
     evidences = relationship("Evidence", back_populates="transaction")
     travel_info = relationship("TravelInfo", back_populates="transaction")
     documentos = relationship("Documentos", back_populates="transaction")
-    factura = relationship("Factura", back_populates="transaction", uselist=False)
+    factura = relationship("Factura", back_populates="transaction")
 
 class Factura(Base):
     __tablename__ = "factura"
@@ -154,4 +154,4 @@ class Factura(Base):
     nota_importante_contenido = Column(String, nullable=True)
     nota_condicion_pago = Column(String, nullable=True)
 
-    transaction = relationship("Transaction", back_populates="factura")
+    transaction = relationship("Transaction", back_populates="Factura")

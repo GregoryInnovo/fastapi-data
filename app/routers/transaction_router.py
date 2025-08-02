@@ -1066,6 +1066,7 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
         db.query(Transaction)
         .filter(Transaction.seller_id == id_user)
         .options(selectinload(Transaction.evidences))
+        .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
     
@@ -1114,6 +1115,7 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
             selectinload(Transaction.evidences),
             selectinload(Transaction.seller)
         )
+        .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
     
