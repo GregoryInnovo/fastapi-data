@@ -160,6 +160,8 @@ class FacturaCreate(BaseModel):
     nota_importante_contenido: Optional[str] = None
     nota_condicion_pago: Optional[str] = None
     monto_total_acumulado: Optional[float] = None
+    travelers: Optional[List[TravelerCreate]] = None
+
 
 class FacturaUpdate(BaseModel):
     reserva_numero: Optional[str] = None
@@ -185,7 +187,7 @@ class FacturaUpdate(BaseModel):
     nota_importante_contenido: Optional[str] = None
     nota_condicion_pago: Optional[str] = None
     monto_total_acumulado: Optional[float] = None   
-
+    travelers: Optional[List[TravelerUpdate]] = None
 
 @router.post("/", status_code=201)
 def create_transaction(transaction: TransactionCreate, db: Session = Depends(get_db)):
@@ -1277,6 +1279,13 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
     }
 
 # Endpoints para la factura
+from datetime import date
+
+def serialize_date(obj):
+    if isinstance(obj, date):
+        return obj.isoformat()
+    return obj
+
 @router.post("/{transaction_id}/factura", status_code=201)
 def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = Depends(get_db)):
     # Verificar si la transacción existe
@@ -1294,11 +1303,23 @@ def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = De
     # Calcular el monto total acumulado sumando los abonos de facturas anteriores
     monto_total_acumulado = sum(f.abono for f in facturas_previas) + factura.abono
 
+    # Convertir las cuentas de recaudo a diccionarios
+    cuentas_recaudo_dict = [cuenta.dict() for cuenta in factura.cuentas_recaudo] if factura.cuentas_recaudo else None
+
+    # Convertir los travelers con serialización de fechas
+    travelers_dict = None
+    if factura.travelers:
+        travelers_dict = []
+        for traveler in factura.travelers:
+            traveler_data = traveler.dict()
+            traveler_data['date_birth'] = serialize_date(traveler_data['date_birth'])
+            travelers_dict.append(traveler_data)
+
     # Crear nueva factura
     new_factura = Factura(
         transaction_id=transaction_id,
         reserva_numero=factura.reserva_numero,
-        fecha_compra=factura.fecha_compra,
+        fecha_compra=serialize_date(factura.fecha_compra),
         agencia_nombre=factura.agencia_nombre,
         nit_agencia=factura.nit_agencia,
         rnt_agencia=factura.rnt_agencia,
@@ -1307,19 +1328,20 @@ def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = De
         pais_destino=factura.pais_destino,
         ciudad_salida=factura.ciudad_salida,
         ciudad_llegada=factura.ciudad_llegada,
-        fecha_inicio_viaje=factura.fecha_inicio_viaje,
-        fecha_regreso_viaje=factura.fecha_regreso_viaje,
+        fecha_inicio_viaje=serialize_date(factura.fecha_inicio_viaje),
+        fecha_regreso_viaje=serialize_date(factura.fecha_regreso_viaje),
         hotel_nombre=factura.hotel_nombre,
         num_noches=factura.num_noches,
         tarifa_por_pasajero=factura.tarifa_por_pasajero,
         tarifa_por_niño=factura.tarifa_por_niño,
         abono=factura.abono,
-        cuentas_recaudo=factura.cuentas_recaudo,
+        cuentas_recaudo=cuentas_recaudo_dict,
         pago_transferencia=factura.pago_transferencia,
         pago_efectivo=factura.pago_efectivo,
         nota_importante_contenido=factura.nota_importante_contenido,
         nota_condicion_pago=factura.nota_condicion_pago,
-        monto_total_acumulado=monto_total_acumulado
+        monto_total_acumulado=monto_total_acumulado,
+        travelers=travelers_dict
     )
     
     db.add(new_factura)
@@ -1336,7 +1358,7 @@ def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = De
         }
     }
 
-@router.get("/{transaction_id}/facturas")
+@router.get("/{transaction_id}/factura")
 def get_facturas_by_transaction(transaction_id: int, db: Session = Depends(get_db)):
     # Verificar si la transacción existe
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
@@ -1359,7 +1381,6 @@ def get_facturas_by_transaction(transaction_id: int, db: Session = Depends(get_d
     for factura in facturas:
         facturas_response.append({
             **factura.__dict__,
-            "abono_actual": factura.abono,
             "monto_total_acumulado": factura.monto_total_acumulado,
             "saldo_pendiente": transaction.amount - factura.monto_total_acumulado
         })

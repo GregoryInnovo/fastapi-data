@@ -154,5 +154,6 @@ class Factura(Base):
     nota_importante_contenido = Column(String, nullable=True)
     nota_condicion_pago = Column(String, nullable=True)
     monto_total_acumulado = Column(Float, nullable=False)
+    travelers = Column(JSONB, nullable=False)
 
     transaction = relationship("Transaction", back_populates="factura")
