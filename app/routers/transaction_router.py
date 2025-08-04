@@ -7,7 +7,8 @@ from app.models.transaction import (Transaction,
  Traveler,
  TransactionType,
  TransactionStatus, 
- Evidence, 
+ Evidence,
+ EvidenceStatus, 
  Itinerario,
  TravelInfo,
  Documentos,
@@ -27,6 +28,7 @@ class EvidenceCreate(BaseModel):
     evidence_file: str
     amount: float
     filename: str = None
+
 
 
 class TravelerCreate(BaseModel):
@@ -838,7 +840,8 @@ def add_evidence(transaction_id: int, evidence: EvidenceCreate, db: Session = De
     new_evidence = Evidence(
         transaction_id=transaction_id,
         evidence_file=evidence.evidence_file,
-        amount=evidence.amount
+        amount=evidence.amount,
+        status=EvidenceStatus.pending  # Estado por defecto
     )
     db.add(new_evidence)
     db.commit()
@@ -863,12 +866,72 @@ def delete_evidence(transaction_id: int, evidence_id: int, db: Session = Depends
     db.commit()
     return {"message": "Evidencia eliminada con éxito"}
 
+@router.patch("/evidence/{evidence_id}/status", status_code=200)
+def update_evidence_status(
+    evidence_id: int,
+    status: EvidenceStatus,
+    db: Session = Depends(get_db)
+):
+    evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidencia no encontrada")
+
+    evidence.status = status
+    db.commit()
+    db.refresh(evidence)
+
+    return {
+        "message": f"Estado de evidencia actualizado a {status}",
+        "evidence": {
+            "id": evidence.id,
+            "transaction_id": evidence.transaction_id,
+            "evidence_file": evidence.evidence_file,
+            "upload_date": evidence.upload_date,
+            "amount": evidence.amount,
+            "status": evidence.status
+        }
+    }
+
+@router.get("/evidence/filter/{status}")
+def get_evidence_by_status(
+    status: EvidenceStatus,
+    db: Session = Depends(get_db)
+):
+    evidences = db.query(Evidence).filter(Evidence.status == status).all()
+    if not evidences:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontraron evidencias con estado {status}"
+        )
+    
+    return [
+        {
+            "id": evidence.id,
+            "transaction_id": evidence.transaction_id,
+            "evidence_file": evidence.evidence_file,
+            "upload_date": evidence.upload_date,
+            "amount": evidence.amount,
+            "status": evidence.status
+        }
+        for evidence in evidences
+    ]
+
 @router.get("/evidence/list")
 def list_all_evidences(db: Session = Depends(get_db)):
     evidences = db.query(Evidence).all()
     if not evidences:
         raise HTTPException(status_code=404, detail="No se encontraron evidencias")
-    return evidences
+    return [
+        {
+            "id": evidence.id,
+            "transaction_id": evidence.transaction_id,
+            "evidence_file": evidence.evidence_file,
+            "upload_date": evidence.upload_date,
+            "amount": evidence.amount,
+            "status": evidence.status
+        }
+        for evidence in evidences
+    ]
 
 @router.post("/{transaction_id}/itinerario", status_code=201)
 def add_itinerario(transaction_id: int, itinerario: ItinerarioCreate, db: Session = Depends(get_db)):
@@ -1083,7 +1146,8 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
     # Filtrar las transacciones que están completamente pagadas
     paid_transactions = []
     for transaction in transactions:
-        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        # Calcular el total solo con evidencias aprobadas
+        total_paid = sum(evidence.amount for evidence in transaction.evidences if evidence.status == EvidenceStatus.approved)
         if total_paid >= transaction.amount:  # >= por si hay sobrepagos
             paid_transactions.append({
                 "id": transaction.id,
@@ -1188,7 +1252,8 @@ def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
     # Filtrar las transacciones que NO están completamente pagadas
     unpaid_transactions = []
     for transaction in transactions:
-        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        # Calcular el total solo con evidencias aprobadas
+        total_paid = sum(evidence.amount for evidence in transaction.evidences if evidence.status == EvidenceStatus.approved)
         if total_paid < transaction.amount:  # < para identificar las que faltan por pagar
             pending_amount = transaction.amount - total_paid
             unpaid_transactions.append({

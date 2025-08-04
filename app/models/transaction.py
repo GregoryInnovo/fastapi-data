@@ -41,6 +41,11 @@ class Traveler(Base):
     transaction = relationship("Transaction", back_populates="travelers")
     documentos = relationship("Documentos", back_populates="traveler")
 
+class EvidenceStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
 class Evidence(Base):
     __tablename__ = "evidence"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -48,6 +53,7 @@ class Evidence(Base):
     evidence_file = Column(String, nullable=False)
     upload_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     amount = Column(Float, nullable=False)
+    status = Column(Enum(EvidenceStatus), default=EvidenceStatus.pending, nullable=False)
 
     transaction = relationship("Transaction", back_populates="evidences")
 
