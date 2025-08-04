@@ -10,16 +10,16 @@ router = APIRouter(prefix="/cuentas-recaudo", tags=["cuentas-recaudo"])
 class CuentasRecaudoCreate(BaseModel):
     # Aquí puedes agregar más campos según necesites
     banco: str
-    numero_cuenta: str
-    tipo_cuenta: str
-    titular: str
+    numero: str
+    nombre: str
+    nit: str
 
 class CuentasRecaudoResponse(BaseModel):
     id: int
     banco: str
-    numero_cuenta: str
-    tipo_cuenta: str
-    titular: str
+    numero: str
+    nombre: str
+    nit: str
 
     class Config:
         from_attributes = True

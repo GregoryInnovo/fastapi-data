@@ -23,9 +23,9 @@ class CuentasRecaudo(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     banco = Column(String, nullable=False)
-    numero_cuenta = Column(String, nullable=False)
-    tipo_cuenta = Column(String, nullable=False)
-    titular = Column(String, nullable=False)
+    numero = Column(String, nullable=False)
+    nombre = Column(String, nullable=False)
+    nit = Column(String, nullable=False)
 
 class Traveler(Base):
     __tablename__ = "travelers"
