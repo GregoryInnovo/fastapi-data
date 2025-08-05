@@ -261,7 +261,6 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
             evidencias = Evidence(
                 evidence_file=evidence.evidence_file,
                 amount=evidence.amount,
-                status=evidence.status,
                 transaction_id=new_transaction.id
             )
             db.add(evidencias)
