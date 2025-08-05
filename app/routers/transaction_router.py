@@ -895,9 +895,17 @@ def update_evidence_status(
 @router.get("/evidence/filter/{status}")
 def get_evidence_by_status(
     status: EvidenceStatus,
+    transaction_status: Optional[TransactionStatus] = None,
     db: Session = Depends(get_db)
 ):
-    evidences = db.query(Evidence).filter(Evidence.status == status).all()
+    # Construir la consulta base
+    query = db.query(Evidence).filter(Evidence.status == status)
+    
+    # Si se proporciona transaction_status, filtrar por transacciones con ese estado
+    if transaction_status:
+        query = query.join(Transaction).filter(Transaction.status == transaction_status)
+    
+    evidences = query.all()
     if not evidences:
         raise HTTPException(
             status_code=404,
@@ -1408,6 +1416,7 @@ def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = De
         monto_total_acumulado=monto_total_acumulado,
         travelers=travelers_dict
     )
+    
     db.add(new_factura)
     db.commit()
     db.refresh(new_factura)
