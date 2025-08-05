@@ -899,8 +899,13 @@ def get_evidence_by_status(
     db: Session = Depends(get_db)
 ):
     # Construir la consulta base
-    query = db.query(Evidence).filter(Evidence.status == status)
-    
+    #query = db.query(Evidence).filter(Evidence.status == status)
+    query = (
+        db.query(Evidence, Transaction, User)
+        .join(Transaction, Evidence.transaction_id == Transaction.id)
+        .join(User, Transaction.seller_id == User.id)
+        .filter(Evidence.status == status)
+    )
     # Si se proporciona transaction_status, filtrar por transacciones con ese estado
     if transaction_status:
         query = query.join(Transaction).filter(Transaction.status == transaction_status)
@@ -919,9 +924,20 @@ def get_evidence_by_status(
             "evidence_file": evidence.evidence_file,
             "upload_date": evidence.upload_date,
             "amount": evidence.amount,
-            "status": evidence.status
+            "status": evidence.status,
+            "transaction_info":{
+                "seller"{
+                    "id": user.id,
+                    "name": user.name,
+                    "email": user.email
+                },
+            "client_name": transaction.client_name,
+            "package": transaction.package,
+            "start_date": transaction.start_date,
+            "end_date": transaction.end_date
+            }
         }
-        for evidence in evidences
+        for evidence, transaction, user in evidences
     ]
 
 @router.get("/evidence/list")
