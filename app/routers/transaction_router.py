@@ -908,8 +908,8 @@ def get_evidence_by_status(
     )
     # Si se proporciona transaction_status, filtrar por transacciones con ese estado
     if transaction_status:
-        query = query.join(Transaction).filter(Transaction.status == transaction_status)
-    
+        query = query.filter(Transaction.status == transaction_status)
+        
     evidences = query.all()
     if not evidences:
         raise HTTPException(
