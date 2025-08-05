@@ -1103,6 +1103,11 @@ def update_travel_info_by_transaction_id(transaction_id: int, travel_info_id: in
         travel_info.direccion_hotel = data.direccion_hotel
     if data.ciudad_destino is not None:
         travel_info.ciudad_destino = data.ciudad_destino
+    if data.acomodacion is not None:
+        travel_info.acomodacion = data.acomodacion
+    if data.pais_destino is not None:
+        travel_info.pais_destino = data.pais_destino
+
 
     db.commit()
     db.refresh(travel_info)
