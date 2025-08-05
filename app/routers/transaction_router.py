@@ -277,7 +277,7 @@ def get_all_transaction_test(db: Session = Depends(get_db)):
         .options(
             joinedload(Transaction.seller),
             selectinload(Transaction.travelers),
-            selectinload(Transaction.evidences),
+            selectinload(Transaction.evidence),
             selectinload(Transaction.itinerario),
             selectinload(Transaction.documentos),
             selectinload(Transaction.travel_info),
@@ -337,7 +337,7 @@ def list_transactions(db: Session = Depends(get_db)):
             "travelers": transaction.travelers,
             "travel_info": transaction.travel_info,
             "documentos": transaction.documentos,
-            "evidences": [
+            "evidence": [
                 {
                 "id": evidence.id,
                 "transaction_id": evidence.transaction_id,
@@ -635,7 +635,7 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
         .options(
             joinedload(Transaction.seller),
             selectinload(Transaction.travelers),
-            selectinload(Transaction.evidences),
+            selectinload(Transaction.evidence),
             selectinload(Transaction.itinerario),
             selectinload(Transaction.documentos),
             selectinload(Transaction.travel_info)
@@ -1169,7 +1169,7 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
     transactions = (
         db.query(Transaction)
         .filter(Transaction.seller_id == id_user)
-        .options(selectinload(Transaction.evidences))
+        .options(selectinload(Transaction.evidence))
         .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
@@ -1184,7 +1184,7 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
     paid_transactions = []
     for transaction in transactions:
         # Calcular el total solo con evidencias aprobadas
-        total_paid = sum(evidence.amount for evidence in transaction.evidences if evidence.status == EvidenceStatus.approved)
+        total_paid = sum(evidence.amount for evidence in transaction.evidence if evidence.status == EvidenceStatus.approved)
         if total_paid >= transaction.amount:  # >= por si hay sobrepagos
             paid_transactions.append({
                 "id": transaction.id,
@@ -1194,7 +1194,7 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
                 "total_paid": total_paid,
                 "status": transaction.status,
                 "created_at": transaction.created_at,
-                "evidences": [
+                "evidence": [
                     {
                         "id": evidence.id,
                         "amount": evidence.amount,
@@ -1217,7 +1217,7 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
     transactions = (
         db.query(Transaction)
         .options(
-            selectinload(Transaction.evidences),
+            selectinload(Transaction.evidence),
             selectinload(Transaction.seller)
         )
         .filter(Transaction.status == TransactionStatus.approved)
@@ -1233,7 +1233,7 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
     # Filtrar las transacciones que están completamente pagadas
     paid_transactions = []
     for transaction in transactions:
-        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        total_paid = sum(evidence.amount for evidence in transaction.evidence)
         if total_paid >= transaction.amount:  # >= por si hay sobrepagos
             paid_transactions.append({
                 "id": transaction.id,
@@ -1248,13 +1248,13 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
                     "name": transaction.seller.name,
                     "email": transaction.seller.email
                 } if transaction.seller else None,
-                "evidences": [
+                "evidence": [
                     {
                         "id": evidence.id,
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
                         "upload_date": evidence.upload_date
-                    } for evidence in transaction.evidences
+                    } for evidence in transaction.evidence
                 ]
             })
     
@@ -1275,7 +1275,7 @@ def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
     transactions = (
         db.query(Transaction)
         .filter(Transaction.seller_id == id_user)
-        .options(selectinload(Transaction.evidences))
+        .options(selectinload(Transaction.evidence))
         .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
@@ -1290,7 +1290,7 @@ def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
     unpaid_transactions = []
     for transaction in transactions:
         # Calcular el total solo con evidencias aprobadas
-        total_paid = sum(evidence.amount for evidence in transaction.evidences if evidence.status == EvidenceStatus.approved)
+        total_paid = sum(evidence.amount for evidence in transaction.evidence if evidence.status == EvidenceStatus.approved)
         if total_paid < transaction.amount:  # < para identificar las que faltan por pagar
             pending_amount = transaction.amount - total_paid
             unpaid_transactions.append({
@@ -1302,13 +1302,13 @@ def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
                 "pending_amount": pending_amount,
                 "status": transaction.status,
                 "created_at": transaction.created_at,
-                "evidences": [
+                "evidence": [
                     {
                         "id": evidence.id,
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
                         "upload_date": evidence.upload_date
-                    } for evidence in transaction.evidences
+                    } for evidence in transaction.evidence
                 ]
             })
     
@@ -1324,7 +1324,7 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
     transactions = (
         db.query(Transaction)
         .options(
-            selectinload(Transaction.evidences),
+            selectinload(Transaction.evidence),
             selectinload(Transaction.seller),
         )
         .filter(Transaction.status == TransactionStatus.approved)
@@ -1340,7 +1340,7 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
     # Filtrar las transacciones que NO están completamente pagadas
     unpaid_transactions = []
     for transaction in transactions:
-        total_paid = sum(evidence.amount for evidence in transaction.evidences)
+        total_paid = sum(evidence.amount for evidence in transaction.evidence)
         if total_paid < transaction.amount:  # < para identificar las que faltan por pagar
             pending_amount = transaction.amount - total_paid
             unpaid_transactions.append({
@@ -1357,13 +1357,13 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
                     "name": transaction.seller.name,
                     "email": transaction.seller.email
                 } if transaction.seller else None,
-                "evidences": [
+                "evidence": [
                     {
                         "id": evidence.id,
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
                         "upload_date": evidence.upload_date
-                    } for evidence in transaction.evidences
+                    } for evidence in transaction.evidence
                 ]
             })
     

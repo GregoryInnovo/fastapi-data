@@ -55,7 +55,7 @@ class Evidence(Base):
     amount = Column(Float, nullable=False)
     status = Column(Enum(EvidenceStatus), default=EvidenceStatus.pending, nullable=False)
 
-    transaction = relationship("Transaction", back_populates="evidences")
+    transaction = relationship("Transaction", back_populates="evidence")
 
 class Itinerario(Base):
     __tablename__ = "itinerario"
@@ -127,7 +127,7 @@ class Transaction(Base):
     itinerario = relationship("Itinerario", back_populates="transaction")
     seller = relationship("User", back_populates="transactions")
     travelers = relationship("Traveler", back_populates="transaction")
-    evidences = relationship("Evidence", back_populates="transaction")
+    evidence = relationship("Evidence", back_populates="transaction")
     travel_info = relationship("TravelInfo", back_populates="transaction")
     documentos = relationship("Documentos", back_populates="transaction")
     factura = relationship("Factura", back_populates="transaction", uselist=False)
