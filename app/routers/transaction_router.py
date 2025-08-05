@@ -113,7 +113,7 @@ class TransactionCreate(BaseModel):
     end_date: datetime = None
     travelers: List[TravelerCreate] = None
     travel_info: List[TravelInfoCrerate] = None
-    evidence: EvidenceCreate = None
+    evidence: List[EvidenceCreate] = None
     itinerario: List[ItinerarioCreate] = None
 
 
