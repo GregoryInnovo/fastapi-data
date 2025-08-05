@@ -1408,7 +1408,6 @@ def create_factura(transaction_id: int, factura: FacturaCreate, db: Session = De
         monto_total_acumulado=monto_total_acumulado,
         travelers=travelers_dict
     )
-    
     db.add(new_factura)
     db.commit()
     db.refresh(new_factura)
