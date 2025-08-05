@@ -255,6 +255,19 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
             )
             db.add(itinerarios)
     db.commit()
+
+    if transaction.evidence:
+        for evidence in transaction.evidence:
+            evidencias = Evidence(
+                evidence_file=evidence.evidence_file,
+                amount=evidence.amount,
+                upload_date=evidence.upload_date,
+                status=evidence.status,
+                transaction_id=new_transaction.id
+            )
+            db.add(evidencias)
+    db.commit()
+
     return {"message": "Transacción creada con éxito", "transaction_id": new_transaction.id}
 
 @router.get("/", status_code=200)
@@ -909,7 +922,7 @@ def get_evidence_by_status(
     # Si se proporciona transaction_status, filtrar por transacciones con ese estado
     if transaction_status:
         query = query.filter(Transaction.status == transaction_status)
-        
+
     evidences = query.all()
     if not evidences:
         raise HTTPException(
