@@ -452,7 +452,8 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
                 "transaction_id": evidence.transaction_id,
                 "evidence_file": evidence.evidence_file,
                 "upload_date": evidence.upload_date,
-                "amount": evidence.amount
+                "amount": evidence.amount,
+                "status": evidence.status
                 } for evidence in evidences
             ],
         "itinerario": [
