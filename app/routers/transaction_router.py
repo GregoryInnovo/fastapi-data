@@ -368,7 +368,7 @@ def update_transaction_status(transaction_id: int, status: TransactionStatus, db
     first_evidence = (
         db.query(Evidence)
           .filter(Evidence.transaction_id == transaction_id)
-          .order_by(desc(Evidence.id))
+          .order_by(Evidence.id.desc())
           .first()
     )
     #    Si quisieras la más reciente, usarías desc():
