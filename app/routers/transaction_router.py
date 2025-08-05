@@ -926,7 +926,7 @@ def get_evidence_by_status(
             "amount": evidence.amount,
             "status": evidence.status,
             "transaction_info":{
-                "seller"{
+                "seller": {
                     "id": user.id,
                     "name": user.name,
                     "email": user.email
