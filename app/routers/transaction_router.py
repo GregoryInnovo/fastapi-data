@@ -353,14 +353,38 @@ def list_transactions(db: Session = Depends(get_db)):
 #Actualizar el Estado de una Transacción: (Por ejemplo, cambiar a "aprobado" o "rechazado").
 @router.patch("/{transaction_id}/status", status_code=200)
 def update_transaction_status(transaction_id: int, status: TransactionStatus, db: Session = Depends(get_db)):
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    # Carga la transacción con sus evidencias (ordenadas DESC por id)
+    transaction = (
+        db.query(Transaction)
+          .options(
+              selectinload(Transaction.evidence)
+                .order_by(Evidence.id.desc())
+          )
+          .filter(Transaction.id == transaction_id)
+          .first()
+    )
     if not transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
+
+    if transaction.evidence:
+        latest_evidence = transaction.evidence[0]
+        if transaction.status == "pending":
+            if status == "approved":
+                latest_evidence.status =  "approved"
+
+    # Actualiza el estado de la transacción
     transaction.status = status
+
+    # Si hay evidencias, actualiza el estado de la más reciente
+    
+
     db.commit()
     db.refresh(transaction)
-    return {"message": "Estado de la transacción actualizado", "transaction": transaction}
 
+    return {
+        "message": "Estado de la transacción actualizado",
+        "transaction": transaction
+    }
 #Obtener Detalles de una Transacción:
 @router.get("/{transaction_id}")
 def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
