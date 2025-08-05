@@ -257,7 +257,7 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
     db.commit()
 
     if transaction.evidence:
-        for evidence in transaction.evidence:
+        for (evidence, ) in transaction.evidence:
             evidencias = Evidence(
                 evidence_file=evidence.evidence_file,
                 amount=evidence.amount,
