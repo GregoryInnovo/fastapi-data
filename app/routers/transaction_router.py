@@ -1797,7 +1797,8 @@ def get_manage_flies_by_seller(seller_id: int, current_date: str, db: Session = 
             "package": transaction.package,
             "start_date": start_date_only.isoformat(),
             "daysLeave": days_leave,
-            "amount": transaction.amount
+            "amount": transaction.amount,
+            "payment_status": 0 if transaction.payment_status == "pago_incompleto" else 1
         }
         
         # Clasificar en grupos
