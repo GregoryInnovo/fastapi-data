@@ -1238,7 +1238,7 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
                         "upload_date": evidence.upload_date
-                    } for evidence in transaction.evidences
+                    } for evidence in transaction.evidence
                 ]
             })
     
