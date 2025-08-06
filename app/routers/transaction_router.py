@@ -1730,3 +1730,93 @@ def update_transaction_payment_status(transaction_id: int, db: Session):
         new_payment_status = calculate_payment_status(transaction_id, db)
         transaction.payment_status = new_payment_status
         db.commit()
+
+
+@router.get("/manageFlies/by-seller/{seller_id}")
+def get_manage_flies_by_seller(seller_id: int, current_date: str, db: Session = Depends(get_db)):
+    """
+    Obtiene todas las transacciones filtradas por seller_id y status aprobado,
+    agrupadas por estado del viaje basado en las fechas.
+    
+    Args:
+        seller_id: ID del vendedor
+        current_date: Fecha actual en formato YYYY-MM-DD
+    
+    Returns:
+        Dict con arrays de transacciones agrupadas por estado
+    """
+    from datetime import datetime, timedelta
+    
+    try:
+        current_date_obj = datetime.strptime(current_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Use YYYY-MM-DD")
+    
+    transactions = (
+        db.query(Transaction)
+        .filter(
+            Transaction.seller_id == seller_id,
+            Transaction.status == TransactionStatus.approved
+        )
+        .all()
+    )
+    
+    if not transactions:
+        raise HTTPException(status_code=404, detail=f"No se encontraron transacciones para el seller_id {seller_id}")
+    
+    # Inicializar grupos
+    groups = {
+        "proximos": [],
+        "por_comenzar": [],
+        "a_punto": [],
+        "en_viaje": [],
+        "regresando": [],
+        "finalizados": []
+    }
+    
+    for transaction in transactions:
+        if not transaction.start_date or not transaction.end_date:
+            continue  # Saltar transacciones sin fechas
+            
+        start_date = transaction.start_date
+        end_date = transaction.end_date
+        
+        # Convertir a date para comparaciones más fáciles
+        current_date_only = current_date_obj.date()
+        start_date_only = start_date.date() if isinstance(start_date, datetime) else start_date
+        end_date_only = end_date.date() if isinstance(end_date, datetime) else end_date
+        
+        # Calcular días que faltan para el viaje
+        days_to_start = (start_date_only - current_date_only).days
+        days_leave = max(0, days_to_start)  # No puede ser negativo
+        
+        # Crear objeto de transacción simplificado
+        transaction_data = {
+            "id": transaction.id,
+            "client_name": transaction.client_name,
+            "package": transaction.package,
+            "start_date": start_date_only.isoformat(),
+            "daysLeave": days_leave,
+            "amount": transaction.amount
+        }
+        
+        # Clasificar en grupos
+        if current_date_only < start_date_only:
+            # Antes del viaje
+            if days_to_start > 30:  # Más de 1 mes
+                groups["proximos"].append(transaction_data)
+            elif days_to_start > 3:  # Entre 1 mes y 3 días
+                groups["por_comenzar"].append(transaction_data)
+            else:  # 3 días o menos
+                groups["a_punto"].append(transaction_data)
+        elif current_date_only == end_date_only:
+            # El día que termina el viaje
+            groups["regresando"].append(transaction_data)
+        elif start_date_only <= current_date_only <= end_date_only:
+            # Durante el viaje
+            groups["en_viaje"].append(transaction_data)
+        else:
+            # Después del viaje
+            groups["finalizados"].append(transaction_data)
+    
+    return groups
