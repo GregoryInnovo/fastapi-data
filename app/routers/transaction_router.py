@@ -3,6 +3,7 @@ from io import BytesIO
 import base64
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import func
 from app.models.transaction import (Transaction,
  Traveler,
  TransactionType,
@@ -1821,3 +1822,293 @@ def get_manage_flies_by_seller(seller_id: int, current_date: str, db: Session = 
             groups["finalizados"].append(transaction_data)
     
     return groups
+
+
+@router.get("/ingresos-totales/")
+def get_ingresos_totales(
+    fecha_inicio: str = None,  # YYYY-MM-DD
+    fecha_fin: str = None,     # YYYY-MM-DD
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene el total de ingresos por rango de fechas.
+    
+    Args:
+        fecha_inicio: Fecha de inicio en formato YYYY-MM-DD (opcional)
+        fecha_fin: Fecha de fin en formato YYYY-MM-DD (opcional)
+    
+    Returns:
+        Dict con el total de ingresos y detalles de las evidencias
+    """
+    from datetime import datetime, date
+    from sqlalchemy import and_
+    
+    # Construir la consulta base
+    query = db.query(Evidence).filter(Evidence.status == EvidenceStatus.approved)
+    
+    # Si no se especifican fechas, obtener histórico completo
+    if not fecha_inicio and not fecha_fin:
+        titulo_periodo = "Histórico Completo"
+        fecha_inicio_obj = None
+        fecha_fin_obj = None
+        
+    else:
+        # Validar que ambas fechas estén presentes si se especifica una
+        if fecha_inicio and not fecha_fin:
+            raise HTTPException(
+                status_code=400,
+                detail="Si especifica fecha_inicio, debe especificar también fecha_fin"
+            )
+        if fecha_fin and not fecha_inicio:
+            raise HTTPException(
+                status_code=400,
+                detail="Si especifica fecha_fin, debe especificar también fecha_inicio"
+            )
+        
+        # Convertir fechas
+        try:
+            fecha_inicio_obj = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            fecha_fin_obj = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Formato de fecha inválido. Use YYYY-MM-DD"
+            )
+        
+        # Validar que fecha_inicio <= fecha_fin
+        if fecha_inicio_obj > fecha_fin_obj:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha de inicio debe ser menor o igual a la fecha de fin"
+            )
+        
+        # Aplicar filtro de fechas
+        query = query.filter(
+            and_(
+                func.date(Evidence.upload_date) >= fecha_inicio_obj,
+                func.date(Evidence.upload_date) <= fecha_fin_obj
+            )
+        )
+        
+        titulo_periodo = f"Período: {fecha_inicio} a {fecha_fin}"
+    
+    # Ejecutar la consulta de evidencias
+    evidencias = query.all()
+    
+    # Calcular el total de ingresos
+    total_ingresos = sum(evidence.amount for evidence in evidencias) if evidencias else 0.0
+    
+    # Calcular ganancias (15% de ingresos)
+    total_ganancias = total_ingresos * 0.15
+    
+    # Calcular comisión (5% de ingresos)
+    total_comision = total_ingresos * 0.05
+    
+    # Obtener estadísticas de transacciones por estado
+    # Construir consulta base para transacciones
+    trans_query = db.query(Transaction)
+    
+    # Aplicar filtro de fechas si se especificó
+    if fecha_inicio and fecha_fin:
+        trans_query = trans_query.filter(
+            and_(
+                func.date(Transaction.created_at) >= fecha_inicio_obj,
+                func.date(Transaction.created_at) <= fecha_fin_obj
+            )
+        )
+    
+    # Obtener todas las transacciones del período
+    transacciones = trans_query.all()
+    
+    # Contar por estado
+    total_ventas = len(transacciones)
+    ventas_pending = len([t for t in transacciones if t.status == TransactionStatus.pending])
+    ventas_approved = len([t for t in transacciones if t.status == TransactionStatus.approved])
+    ventas_incompleta = len([t for t in transacciones if t.status == TransactionStatus.incompleta])
+    ventas_rejected = len([t for t in transacciones if t.status == TransactionStatus.rejected])
+    ventas_terminado = len([t for t in transacciones if t.status == TransactionStatus.terminado])
+    
+    # Preparar detalles de las evidencias
+    detalles_evidencias = []
+    for evidence in evidencias:
+        detalles_evidencias.append({
+            "id": evidence.id,
+            "transaction_id": evidence.transaction_id,
+            "amount": evidence.amount,
+            "upload_date": evidence.upload_date.isoformat(),
+            "status": evidence.status.value,
+            "invoice_status": evidence.invoice_status.value
+        })
+    
+    return {
+        "titulo_periodo": titulo_periodo,
+        "fecha_inicio": fecha_inicio,
+        "fecha_fin": fecha_fin,
+        "total_ingresos": total_ingresos,
+        "total_ganancias": total_ganancias,
+        "total_comision": total_comision,
+        "cantidad_evidencias": len(evidencias),
+        "estadisticas_ventas": {
+            "total_ventas": total_ventas,
+            "pending": ventas_pending,
+            "approved": ventas_approved,
+            "incompleta": ventas_incompleta,
+            "rejected": ventas_rejected,
+            "terminado": ventas_terminado
+        },
+        "evidencias": detalles_evidencias
+    }
+
+@router.get("/ingresos-totales-usuario/")
+def get_ingresos_totales_usuario(
+    user_id: int,
+    fecha_inicio: str = None,  # YYYY-MM-DD
+    fecha_fin: str = None,     # YYYY-MM-DD
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene el total de ingresos por usuario y rango de fechas.
+    Suma todos los amounts de las evidencias aprobadas del usuario en ese rango.
+    Si no se especifica rango de fechas, devuelve el histórico completo del usuario.
+
+    Args:
+        user_id: ID del usuario (seller) para filtrar
+        fecha_inicio: Fecha de inicio en formato YYYY-MM-DD (opcional)
+        fecha_fin: Fecha de fin en formato YYYY-MM-DD (opcional)
+
+    Returns:
+        Dict con el total de ingresos, ganancias, comisión y estadísticas de ventas del usuario
+    """
+    from datetime import datetime, date
+    from sqlalchemy import and_
+
+    # Verificar que el usuario existe
+    usuario = db.query(User).filter(User.id == user_id).first()
+    if not usuario:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Usuario con ID {user_id} no encontrado"
+        )
+
+    # Construir la consulta base para evidencias del usuario
+    query = db.query(Evidence).join(Transaction).filter(
+        and_(
+            Evidence.status == EvidenceStatus.approved,
+            Transaction.seller_id == user_id
+        )
+    )
+
+    # Si no se especifican fechas, obtener histórico completo del usuario
+    if not fecha_inicio and not fecha_fin:
+        titulo_periodo = f"Histórico Completo - Usuario: {usuario.email}"
+        fecha_inicio_obj = None
+        fecha_fin_obj = None
+
+    else:
+        # Validar que ambas fechas estén presentes si se especifica una
+        if fecha_inicio and not fecha_fin:
+            raise HTTPException(
+                status_code=400,
+                detail="Si especifica fecha_inicio, debe especificar también fecha_fin"
+            )
+        if fecha_fin and not fecha_inicio:
+            raise HTTPException(
+                status_code=400,
+                detail="Si especifica fecha_fin, debe especificar también fecha_inicio"
+            )
+
+        # Convertir fechas
+        try:
+            fecha_inicio_obj = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            fecha_fin_obj = datetime.strptime(fecha_fin, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Formato de fecha inválido. Use YYYY-MM-DD"
+            )
+
+        # Validar que fecha_inicio <= fecha_fin
+        if fecha_inicio_obj > fecha_fin_obj:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha de inicio debe ser menor o igual a la fecha de fin"
+            )
+
+        # Aplicar filtro de fechas a evidencias
+        query = query.filter(
+            and_(
+                func.date(Evidence.upload_date) >= fecha_inicio_obj,
+                func.date(Evidence.upload_date) <= fecha_fin_obj
+            )
+        )
+
+        titulo_periodo = f"Período: {fecha_inicio} a {fecha_fin} - Usuario: {usuario.email}"
+
+    # Ejecutar la consulta de evidencias
+    evidencias = query.all()
+
+    # Calcular el total de ingresos
+    total_ingresos = sum(evidence.amount for evidence in evidencias) if evidencias else 0.0
+
+    # Calcular ganancias (15% de ingresos)
+    total_ganancias = total_ingresos * 0.15
+
+    # Calcular comisión (5% de ingresos)
+    total_comision = total_ingresos * 0.05
+
+    # Obtener estadísticas de transacciones por estado del usuario
+    # Construir consulta base para transacciones del usuario
+    trans_query = db.query(Transaction).filter(Transaction.seller_id == user_id)
+
+    # Aplicar filtro de fechas si se especificó
+    if fecha_inicio and fecha_fin:
+        trans_query = trans_query.filter(
+            and_(
+                func.date(Transaction.created_at) >= fecha_inicio_obj,
+                func.date(Transaction.created_at) <= fecha_fin_obj
+            )
+        )
+
+    # Obtener todas las transacciones del usuario en el período
+    transacciones = trans_query.all()
+
+    # Contar por estado
+    total_ventas = len(transacciones)
+    ventas_pending = len([t for t in transacciones if t.status == TransactionStatus.pending])
+    ventas_approved = len([t for t in transacciones if t.status == TransactionStatus.approved])
+    ventas_incompleta = len([t for t in transacciones if t.status == TransactionStatus.incompleta])
+    ventas_rejected = len([t for t in transacciones if t.status == TransactionStatus.rejected])
+    ventas_terminado = len([t for t in transacciones if t.status == TransactionStatus.terminado])
+
+    # Preparar detalles de las evidencias
+    detalles_evidencias = []
+    for evidence in evidencias:
+        detalles_evidencias.append({
+            "id": evidence.id,
+            "transaction_id": evidence.transaction_id,
+            "amount": evidence.amount,
+            "upload_date": evidence.upload_date.isoformat(),
+            "status": evidence.status.value,
+            "invoice_status": evidence.invoice_status.value
+        })
+
+    return {
+        "titulo_periodo": titulo_periodo,
+        "user_id": user_id,
+        "usuario_email": usuario.email,
+        "fecha_inicio": fecha_inicio,
+        "fecha_fin": fecha_fin,
+        "total_ingresos": total_ingresos,
+        "total_ganancias": total_ganancias,
+        "total_comision": total_comision,
+        "cantidad_evidencias": len(evidencias),
+        "estadisticas_ventas": {
+            "total_ventas": total_ventas,
+            "pending": ventas_pending,
+            "approved": ventas_approved,
+            "incompleta": ventas_incompleta,
+            "rejected": ventas_rejected,
+            "terminado": ventas_terminado
+        },
+        "evidencias": detalles_evidencias
+    }
