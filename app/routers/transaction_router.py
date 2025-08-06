@@ -7,8 +7,10 @@ from app.models.transaction import (Transaction,
  Traveler,
  TransactionType,
  TransactionStatus, 
+ PaymentStatus,
  Evidence,
- EvidenceStatus, 
+ EvidenceStatus,
+ EvidenceInvoiceStatus,
  Itinerario,
  TravelInfo,
  Documentos,
@@ -107,6 +109,7 @@ class TransactionCreate(BaseModel):
     amount: float
     transaction_type: TransactionType
     status: TransactionStatus = TransactionStatus.pending
+    payment_status: PaymentStatus = PaymentStatus.pago_incompleto
     seller_id: int
     receipt: str
     start_date: datetime = None
@@ -129,6 +132,7 @@ class TransactionUpdate(BaseModel):
     amount: Optional[float] = None
     transaction_type: Optional[TransactionType] = None
     status: Optional[TransactionStatus] = None
+    payment_status: Optional[PaymentStatus] = None
     seller_id: Optional[int] = None
     receipt: Optional[str] = None
     start_date: Optional[datetime] = None
@@ -205,11 +209,12 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
         amount=transaction.amount,
         transaction_type=transaction.transaction_type.value,
         status=transaction.status.value,
+        payment_status=transaction.payment_status.value,
         seller_id=transaction.seller_id,
         receipt=transaction.receipt,
         start_date=transaction.start_date,
         end_date=transaction.end_date,
-        number_of_travelers=len(transaction.travelers)
+        number_of_travelers=len(transaction.travelers) if transaction.travelers else 0
     )
     db.add(new_transaction)
     db.commit()
@@ -261,7 +266,9 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
             evidencias = Evidence(
                 evidence_file=evidence.evidence_file,
                 amount=evidence.amount,
-                transaction_id=new_transaction.id
+                transaction_id=new_transaction.id,
+                status=EvidenceStatus.pending,
+                invoice_status=EvidenceInvoiceStatus.no_facturado
             )
             db.add(evidencias)
     db.commit()
@@ -387,6 +394,9 @@ def update_transaction_status(transaction_id: int, status: TransactionStatus, db
     # 2) Actualiza el estado de la transacción
     transaction.status = status
 
+    # Actualizar el estado de pago si es necesario
+    update_transaction_payment_status(transaction_id, db)
+
     db.commit()
     db.refresh(transaction)
 
@@ -412,6 +422,9 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
     documents = db.query(Documentos).filter(Documentos.transaction_id == transaction_id).all()
     evidences = db.query(Evidence).filter(Evidence.transaction_id == transaction_id).all()
     itinerarios = db.query(Itinerario).filter(Itinerario.transaction_id == transaction_id).all()
+    # Calcular el total pagado
+    total_paid = sum(evidence.amount for evidence in evidences if evidence.status == EvidenceStatus.approved)
+    
     # Estructura de respuesta
     response = {
         "id": transaction.id,
@@ -426,6 +439,9 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
         "amount": transaction.amount,
         "transaction_type": transaction.transaction_type,
         "status": transaction.status,
+        "payment_status": transaction.payment_status,
+        "total_paid": total_paid,
+        "pending_amount": transaction.amount - total_paid,
         "seller_id": transaction.seller_id,
         "seller_name": seller.name if seller else None,
         "receipt": transaction.receipt,
@@ -453,7 +469,8 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
                 "evidence_file": evidence.evidence_file,
                 "upload_date": evidence.upload_date,
                 "amount": evidence.amount,
-                "status": evidence.status
+                "status": evidence.status,
+                "invoice_status": evidence.invoice_status
                 } for evidence in evidences
             ],
         "itinerario": [
@@ -594,6 +611,8 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
         existing_transaction.transaction_type = transaction.transaction_type.value
     if transaction.status is not None:
         existing_transaction.status = transaction.status.value
+    if transaction.payment_status is not None:
+        existing_transaction.payment_status = transaction.payment_status.value
     if transaction.seller_id is not None:
         existing_transaction.seller_id = transaction.seller_id
     if transaction.receipt is not None:
@@ -654,7 +673,9 @@ def update_transaction(transaction_id: int, transaction: TransactionUpdate, db: 
         evidence = Evidence(
             transaction_id=existing_transaction.id,
             evidence_file=transaction.evidence.evidence_file,
-            amount=transaction.evidence.amount
+            amount=transaction.evidence.amount,
+            status=EvidenceStatus.pending,
+            invoice_status=EvidenceInvoiceStatus.no_facturado
         )
         db.add(evidence)
 
@@ -887,7 +908,8 @@ def add_evidence(transaction_id: int, evidence: EvidenceCreate, db: Session = De
         transaction_id=transaction_id,
         evidence_file=evidence.evidence_file,
         amount=evidence.amount,
-        status=EvidenceStatus.pending  # Estado por defecto
+        status=EvidenceStatus.pending,
+        invoice_status=EvidenceInvoiceStatus.no_facturado
     )
     db.add(new_evidence)
     db.commit()
@@ -926,6 +948,10 @@ def update_evidence_status(
     db.commit()
     db.refresh(evidence)
 
+    # Actualizar el estado de pago de la transacción si la evidencia fue aprobada
+    if status == EvidenceStatus.approved:
+        update_transaction_payment_status(evidence.transaction_id, db)
+
     return {
         "message": f"Estado de evidencia actualizado a {status}",
         "evidence": {
@@ -934,7 +960,35 @@ def update_evidence_status(
             "evidence_file": evidence.evidence_file,
             "upload_date": evidence.upload_date,
             "amount": evidence.amount,
-            "status": evidence.status
+            "status": evidence.status,
+            "invoice_status": evidence.invoice_status
+        }
+    }
+
+@router.patch("/evidence/{evidence_id}/invoice-status", status_code=200)
+def update_evidence_invoice_status(
+    evidence_id: int,
+    invoice_status: EvidenceInvoiceStatus,
+    db: Session = Depends(get_db)
+):
+    evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidencia no encontrada")
+
+    evidence.invoice_status = invoice_status
+    db.commit()
+    db.refresh(evidence)
+
+    return {
+        "message": f"Estado de facturación de evidencia actualizado a {invoice_status}",
+        "evidence": {
+            "id": evidence.id,
+            "transaction_id": evidence.transaction_id,
+            "evidence_file": evidence.evidence_file,
+            "upload_date": evidence.upload_date,
+            "amount": evidence.amount,
+            "status": evidence.status,
+            "invoice_status": evidence.invoice_status
         }
     }
 
@@ -971,6 +1025,7 @@ def get_evidence_by_status(
             "upload_date": evidence.upload_date,
             "amount": evidence.amount,
             "status": evidence.status,
+            "invoice_status": evidence.invoice_status,
             "transaction_info":{
                 "seller": {
                     "id": user.id,
@@ -980,7 +1035,63 @@ def get_evidence_by_status(
             "client_name": transaction.client_name,
             "package": transaction.package,
             "start_date": transaction.start_date,
-            "end_date": transaction.end_date
+            "end_date": transaction.end_date,
+            "payment_status": transaction.payment_status
+            }
+        }
+        for evidence, transaction, user in evidences
+    ]
+
+@router.get("/evidence/filter/{status}/not-invoiced")
+def get_evidence_by_status_not_invoiced(
+    status: EvidenceStatus,
+    transaction_status: Optional[TransactionStatus] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Nuevo endpoint para obtener evidencias con estado específico que NO estén facturadas
+    """
+    # Construir la consulta base
+    query = (
+        db.query(Evidence, Transaction, User)
+        .join(Transaction, Evidence.transaction_id == Transaction.id)
+        .join(User, Transaction.seller_id == User.id)
+        .filter(
+            Evidence.status == status,
+            Evidence.invoice_status == EvidenceInvoiceStatus.no_facturado
+        )
+    )
+    # Si se proporciona transaction_status, filtrar por transacciones con ese estado
+    if transaction_status:
+        query = query.filter(Transaction.status == transaction_status)
+
+    evidences = query.all()
+    if not evidences:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontraron evidencias con estado {status} y no facturadas"
+        )
+    
+    return [
+        {
+            "id": evidence.id,
+            "transaction_id": evidence.transaction_id,
+            "evidence_file": evidence.evidence_file,
+            "upload_date": evidence.upload_date,
+            "amount": evidence.amount,
+            "status": evidence.status,
+            "invoice_status": evidence.invoice_status,
+            "transaction_info":{
+                "seller": {
+                    "id": user.id,
+                    "name": user.name,
+                    "email": user.email
+                },
+            "client_name": transaction.client_name,
+            "package": transaction.package,
+            "start_date": transaction.start_date,
+            "end_date": transaction.end_date,
+            "payment_status": transaction.payment_status
             }
         }
         for evidence, transaction, user in evidences
@@ -998,7 +1109,8 @@ def list_all_evidences(db: Session = Depends(get_db)):
             "evidence_file": evidence.evidence_file,
             "upload_date": evidence.upload_date,
             "amount": evidence.amount,
-            "status": evidence.status
+            "status": evidence.status,
+            "invoice_status": evidence.invoice_status
         }
         for evidence in evidences
     ]
@@ -1231,13 +1343,16 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
                 "total_amount": transaction.amount,
                 "total_paid": total_paid,
                 "status": transaction.status,
+                "payment_status": transaction.payment_status,
                 "created_at": transaction.created_at,
                 "evidence": [
                     {
                         "id": evidence.id,
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
-                        "upload_date": evidence.upload_date
+                        "upload_date": evidence.upload_date,
+                        "status": evidence.status,
+                        "invoice_status": evidence.invoice_status
                     } for evidence in transaction.evidence
                 ]
             })
@@ -1271,7 +1386,7 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
     # Filtrar las transacciones que están completamente pagadas
     paid_transactions = []
     for transaction in transactions:
-        total_paid = sum(evidence.amount for evidence in transaction.evidence)
+        total_paid = sum(evidence.amount for evidence in transaction.evidence if evidence.status == EvidenceStatus.approved)
         if total_paid >= transaction.amount:  # >= por si hay sobrepagos
             paid_transactions.append({
                 "id": transaction.id,
@@ -1280,6 +1395,7 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
                 "total_amount": transaction.amount,
                 "total_paid": total_paid,
                 "status": transaction.status,
+                "payment_status": transaction.payment_status,
                 "created_at": transaction.created_at,
                 "seller": {
                     "id": transaction.seller.id,
@@ -1291,7 +1407,9 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
                         "id": evidence.id,
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
-                        "upload_date": evidence.upload_date
+                        "upload_date": evidence.upload_date,
+                        "status": evidence.status,
+                        "invoice_status": evidence.invoice_status
                     } for evidence in transaction.evidence
                 ]
             })
@@ -1339,13 +1457,16 @@ def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
                 "total_paid": total_paid,
                 "pending_amount": pending_amount,
                 "status": transaction.status,
+                "payment_status": transaction.payment_status,
                 "created_at": transaction.created_at,
                 "evidence": [
                     {
                         "id": evidence.id,
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
-                        "upload_date": evidence.upload_date
+                        "upload_date": evidence.upload_date,
+                        "status": evidence.status,
+                        "invoice_status": evidence.invoice_status
                     } for evidence in transaction.evidence
                 ]
             })
@@ -1378,7 +1499,7 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
     # Filtrar las transacciones que NO están completamente pagadas
     unpaid_transactions = []
     for transaction in transactions:
-        total_paid = sum(evidence.amount for evidence in transaction.evidence)
+        total_paid = sum(evidence.amount for evidence in transaction.evidence if evidence.status == EvidenceStatus.approved)
         if total_paid < transaction.amount:  # < para identificar las que faltan por pagar
             pending_amount = transaction.amount - total_paid
             unpaid_transactions.append({
@@ -1389,6 +1510,7 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
                 "total_paid": total_paid,
                 "pending_amount": pending_amount,
                 "status": transaction.status,
+                "payment_status": transaction.payment_status,
                 "created_at": transaction.created_at,
                 "seller": {
                     "id": transaction.seller.id,
@@ -1400,7 +1522,9 @@ def get_all_unpaid_transactions(db: Session = Depends(get_db)):
                         "id": evidence.id,
                         "amount": evidence.amount,
                         "evidence_file": evidence.evidence_file,
-                        "upload_date": evidence.upload_date
+                        "upload_date": evidence.upload_date,
+                        "status": evidence.status,
+                        "invoice_status": evidence.invoice_status
                     } for evidence in transaction.evidence
                 ]
             })
@@ -1551,3 +1675,41 @@ def update_factura(transaction_id: int, factura_data: FacturaUpdate, db: Session
     db.refresh(factura)
     
     return {"message": "Factura actualizada con éxito", "factura": factura}
+
+def calculate_payment_status(transaction_id: int, db: Session) -> PaymentStatus:
+    """
+    Calcula el estado de pago de una transacción basado en las evidencias aprobadas
+    """
+    # Obtener todas las evidencias aprobadas de la transacción
+    approved_evidences = (
+        db.query(Evidence)
+        .filter(
+            Evidence.transaction_id == transaction_id,
+            Evidence.status == EvidenceStatus.approved
+        )
+        .all()
+    )
+    
+    # Calcular el total pagado
+    total_paid = sum(evidence.amount for evidence in approved_evidences)
+    
+    # Obtener el monto total de la transacción
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        return PaymentStatus.pago_incompleto
+    
+    # Determinar si el pago está completo
+    if total_paid >= transaction.amount:
+        return PaymentStatus.pago_completo
+    else:
+        return PaymentStatus.pago_incompleto
+
+def update_transaction_payment_status(transaction_id: int, db: Session):
+    """
+    Actualiza el estado de pago de una transacción
+    """
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if transaction:
+        new_payment_status = calculate_payment_status(transaction_id, db)
+        transaction.payment_status = new_payment_status
+        db.commit()

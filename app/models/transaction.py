@@ -18,6 +18,10 @@ class TransactionStatus(str, enum.Enum):
     terminado = "terminado"
     incompleta = "incompleta"
 
+class PaymentStatus(str, enum.Enum):
+    pago_incompleto = "pago_incompleto"
+    pago_completo = "pago_completo"
+
 class CuentasRecaudo(Base):
     __tablename__ = "cuentas_recaudo"
 
@@ -46,6 +50,10 @@ class EvidenceStatus(str, enum.Enum):
     approved = "approved"
     rejected = "rejected"
 
+class EvidenceInvoiceStatus(str, enum.Enum):
+    no_facturado = "no_facturado"
+    facturado = "facturado"
+
 class Evidence(Base):
     __tablename__ = "evidence"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -54,6 +62,7 @@ class Evidence(Base):
     upload_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     amount = Column(Float, nullable=False)
     status = Column(Enum(EvidenceStatus), default=EvidenceStatus.pending, nullable=False)
+    invoice_status = Column(Enum(EvidenceInvoiceStatus), default=EvidenceInvoiceStatus.no_facturado, nullable=False)
 
     transaction = relationship("Transaction", back_populates="evidence")
 
@@ -116,6 +125,7 @@ class Transaction(Base):
     amount = Column(Float, nullable=False)
     transaction_type = Column(Enum(TransactionType), nullable=False)
     status = Column(Enum(TransactionStatus), default=TransactionStatus.pending)
+    payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.pago_incompleto, nullable=False)
     seller_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
