@@ -1046,24 +1046,41 @@ def get_evidence_by_status(
 def get_evidence_by_status_not_invoiced(
     status: EvidenceStatus,
     transaction_status: Optional[TransactionStatus] = None,
+    invoice: Optional[EvidenceInvoiceStatus] = None,
+    payment_status: Optional[PaymentStatus] = None,
     db: Session = Depends(get_db)
 ):
     """
     Nuevo endpoint para obtener evidencias con estado específico que NO estén facturadas
     """
     # Construir la consulta base
-    query = (
-        db.query(Evidence, Transaction, User)
-        .join(Transaction, Evidence.transaction_id == Transaction.id)
-        .join(User, Transaction.seller_id == User.id)
-        .filter(
-            Evidence.status == status,
-            Evidence.invoice_status == EvidenceInvoiceStatus.no_facturado
+    if not invoice:
+        query = (
+            db.query(Evidence, Transaction, User)
+            .join(Transaction, Evidence.transaction_id == Transaction.id)
+            .join(User, Transaction.seller_id == User.id)
+            .filter(
+                Evidence.status == status,
+                Evidence.invoice_status == EvidenceInvoiceStatus.no_facturado
+            )
         )
-    )
+    else: 
+        query = (
+            db.query(Evidence, Transaction, User)
+            .join(Transaction, Evidence.transaction_id == Transaction.id)
+            .join(User, Transaction.seller_id == User.id)
+            .filter(
+                Evidence.status == status,
+                Evidence.invoice_status == EvidenceInvoiceStatus.facturado
+            )
+        )
     # Si se proporciona transaction_status, filtrar por transacciones con ese estado
     if transaction_status:
         query = query.filter(Transaction.status == transaction_status)
+
+    if payment_status:
+        query = query.filter(Transaction.payment_status == payment_status)
+
 
     evidences = query.all()
     if not evidences:
