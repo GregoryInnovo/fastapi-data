@@ -1829,27 +1829,57 @@ def get_manage_flies_by_seller(seller_id: int, current_date: str, db: Session = 
 def get_ingresos_totales(
     fecha_inicio: str = None,  # YYYY-MM-DD
     fecha_fin: str = None,     # YYYY-MM-DD
+    user_id: int = None,       # ID del usuario para filtrar (opcional)
     db: Session = Depends(get_db)
 ):
     """
-    Obtiene el total de ingresos por rango de fechas.
+    Obtiene el total de ingresos por rango de fechas y usuario opcional.
     
     Args:
         fecha_inicio: Fecha de inicio en formato YYYY-MM-DD (opcional)
         fecha_fin: Fecha de fin en formato YYYY-MM-DD (opcional)
+        user_id: ID del usuario para filtrar (opcional)
     
     Returns:
-        Dict con el total de ingresos y detalles de las evidencias
+        Dict con el total de ingresos, ganancias y estadísticas de ventas
     """
     from datetime import datetime, date
     from sqlalchemy import and_
     
+    # Validar usuario si se especifica
+    usuario_info = None
+    if user_id is not None:
+        usuario = db.query(User).filter(User.id == user_id).first()
+        if not usuario:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario con ID {user_id} no encontrado"
+            )
+        usuario_info = {
+            'id': usuario.id,
+            'email': usuario.email,
+            'nombre': getattr(usuario, 'name', 'N/A')
+        }
+    
     # Construir la consulta base
-    query = db.query(Evidence).filter(Evidence.status == EvidenceStatus.approved)
+    if user_id is not None:
+        # Filtrar por usuario específico
+        query = db.query(Evidence).join(Transaction).filter(
+            and_(
+                Evidence.status == EvidenceStatus.approved,
+                Transaction.seller_id == user_id
+            )
+        )
+    else:
+        # Sin filtro de usuario
+        query = db.query(Evidence).filter(Evidence.status == EvidenceStatus.approved)
     
     # Si no se especifican fechas, obtener histórico completo
     if not fecha_inicio and not fecha_fin:
-        titulo_periodo = "Histórico Completo"
+        if user_id is not None:
+            titulo_periodo = f"Histórico Completo - Usuario: {usuario_info['email']}"
+        else:
+            titulo_periodo = "Histórico Completo"
         fecha_inicio_obj = None
         fecha_fin_obj = None
         
@@ -1891,7 +1921,10 @@ def get_ingresos_totales(
             )
         )
         
-        titulo_periodo = f"Período: {fecha_inicio} a {fecha_fin}"
+        if user_id is not None:
+            titulo_periodo = f"Período: {fecha_inicio} a {fecha_fin} - Usuario: {usuario_info['email']}"
+        else:
+            titulo_periodo = f"Período: {fecha_inicio} a {fecha_fin}"
     
     # Ejecutar la consulta de evidencias
     evidencias = query.all()
@@ -1908,6 +1941,10 @@ def get_ingresos_totales(
     # Obtener estadísticas de transacciones por estado
     # Construir consulta base para transacciones
     trans_query = db.query(Transaction)
+    
+    # Aplicar filtro de usuario si se especificó
+    if user_id is not None:
+        trans_query = trans_query.filter(Transaction.seller_id == user_id)
     
     # Aplicar filtro de fechas si se especificó
     if fecha_inicio and fecha_fin:
@@ -1929,7 +1966,7 @@ def get_ingresos_totales(
     ventas_rejected = len([t for t in transacciones if t.status == TransactionStatus.rejected])
     ventas_terminado = len([t for t in transacciones if t.status == TransactionStatus.terminado])
 
-    return {
+    response_data = {
         "titulo_periodo": titulo_periodo,
         "fecha_inicio": fecha_inicio,
         "fecha_fin": fecha_fin,
@@ -1946,6 +1983,12 @@ def get_ingresos_totales(
             "terminado": ventas_terminado
         }
     }
+    
+    # Agregar información del usuario si se especificó
+    if usuario_info is not None:
+        response_data["usuario"] = usuario_info
+    
+    return response_data
 
 @router.get("/ingresos-totales-usuario/")
 def get_ingresos_totales_usuario(
