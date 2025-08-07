@@ -1928,19 +1928,7 @@ def get_ingresos_totales(
     ventas_incompleta = len([t for t in transacciones if t.status == TransactionStatus.incompleta])
     ventas_rejected = len([t for t in transacciones if t.status == TransactionStatus.rejected])
     ventas_terminado = len([t for t in transacciones if t.status == TransactionStatus.terminado])
-    
-    # Preparar detalles de las evidencias
-    detalles_evidencias = []
-    for evidence in evidencias:
-        detalles_evidencias.append({
-            "id": evidence.id,
-            "transaction_id": evidence.transaction_id,
-            "amount": evidence.amount,
-            "upload_date": evidence.upload_date.isoformat(),
-            "status": evidence.status.value,
-            "invoice_status": evidence.invoice_status.value
-        })
-    
+
     return {
         "titulo_periodo": titulo_periodo,
         "fecha_inicio": fecha_inicio,
@@ -1956,8 +1944,7 @@ def get_ingresos_totales(
             "incompleta": ventas_incompleta,
             "rejected": ventas_rejected,
             "terminado": ventas_terminado
-        },
-        "evidencias": detalles_evidencias
+        }
     }
 
 @router.get("/ingresos-totales-usuario/")
@@ -2081,18 +2068,6 @@ def get_ingresos_totales_usuario(
     ventas_rejected = len([t for t in transacciones if t.status == TransactionStatus.rejected])
     ventas_terminado = len([t for t in transacciones if t.status == TransactionStatus.terminado])
 
-    # Preparar detalles de las evidencias
-    detalles_evidencias = []
-    for evidence in evidencias:
-        detalles_evidencias.append({
-            "id": evidence.id,
-            "transaction_id": evidence.transaction_id,
-            "amount": evidence.amount,
-            "upload_date": evidence.upload_date.isoformat(),
-            "status": evidence.status.value,
-            "invoice_status": evidence.invoice_status.value
-        })
-
     return {
         "titulo_periodo": titulo_periodo,
         "user_id": user_id,
@@ -2110,8 +2085,7 @@ def get_ingresos_totales_usuario(
             "incompleta": ventas_incompleta,
             "rejected": ventas_rejected,
             "terminado": ventas_terminado
-        },
-        "evidencias": detalles_evidencias
+        }
     }
 
 @router.get("/ingresos-totales-mensual/")
