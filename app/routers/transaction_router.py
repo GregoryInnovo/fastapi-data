@@ -1332,11 +1332,14 @@ def list_all_documentos(db: Session = Depends(get_db)):
 
 @router.get("/user/paid/{id_user}")
 def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
-    # Obtener todas las transacciones del vendedor con sus evidencias
+    # Obtener todas las transacciones del vendedor con sus evidencias y vendedor
     transactions = (
         db.query(Transaction)
         .filter(Transaction.seller_id == id_user)
-        .options(selectinload(Transaction.evidence))
+        .options(
+            selectinload(Transaction.evidence),
+            selectinload(Transaction.seller)
+        )
         .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
@@ -1357,11 +1360,16 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
                 "id": transaction.id,
                 "client_name": transaction.client_name,
                 "package": transaction.package,
+                "amount": transaction.amount,
                 "total_amount": transaction.amount,
                 "total_paid": total_paid,
                 "status": transaction.status,
                 "payment_status": transaction.payment_status,
                 "created_at": transaction.created_at,
+                "seller_id": transaction.seller_id,
+                "seller_name": transaction.seller.name if transaction.seller else None,
+                "start_date": transaction.start_date,
+                "end_date": transaction.end_date,
                 "evidence": [
                     {
                         "id": evidence.id,
@@ -1444,11 +1452,14 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
 
 @router.get("/user/unpaid/{id_user}")
 def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
-    # Obtener todas las transacciones del vendedor con sus evidencias
+    # Obtener todas las transacciones del vendedor con sus evidencias y vendedor
     transactions = (
         db.query(Transaction)
         .filter(Transaction.seller_id == id_user)
-        .options(selectinload(Transaction.evidence))
+        .options(
+            selectinload(Transaction.evidence),
+            selectinload(Transaction.seller)
+        )
         .filter(Transaction.status == TransactionStatus.approved)
         .all()
     )
@@ -1470,12 +1481,17 @@ def get_transaction_unpaid(id_user: int, db: Session = Depends(get_db)):
                 "id": transaction.id,
                 "client_name": transaction.client_name,
                 "package": transaction.package,
+                "amount": transaction.amount,
                 "total_amount": transaction.amount,
                 "total_paid": total_paid,
                 "pending_amount": pending_amount,
                 "status": transaction.status,
                 "payment_status": transaction.payment_status,
                 "created_at": transaction.created_at,
+                "seller_id": transaction.seller_id,
+                "seller_name": transaction.seller.name if transaction.seller else None,
+                "start_date": transaction.start_date,
+                "end_date": transaction.end_date,
                 "evidence": [
                     {
                         "id": evidence.id,
