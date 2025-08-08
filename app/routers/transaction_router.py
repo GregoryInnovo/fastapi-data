@@ -982,6 +982,9 @@ def update_evidence_invoice_status(
     db.commit()
     db.refresh(evidence)
 
+    # Mantener consistencia de pago al cambiar el estado de facturación
+    update_transaction_payment_status(evidence.transaction_id, db)
+
     return {
         "message": f"Estado de facturación de evidencia actualizado a {invoice_status}",
         "evidence": {
@@ -1356,9 +1359,15 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
     # Filtrar las transacciones que están completamente pagadas
     paid_transactions = []
     for transaction in transactions:
-        # Calcular el total solo con evidencias aprobadas
-        total_paid = sum(evidence.amount for evidence in transaction.evidence if evidence.status == EvidenceStatus.approved)
-        if total_paid >= transaction.amount:  # >= por si hay sobrepagos
+        # Usar el cálculo centralizado y alinear el total con la misma lógica (approved + facturado)
+        computed_status = calculate_payment_status(transaction.id, db)
+        if computed_status == PaymentStatus.pago_completo:
+            total_paid = sum(
+                evidence.amount
+                for evidence in transaction.evidence
+                if evidence.status == EvidenceStatus.approved
+                and evidence.invoice_status == EvidenceInvoiceStatus.facturado
+            )
             paid_transactions.append({
                 "id": transaction.id,
                 "client_name": transaction.client_name,
@@ -1367,7 +1376,7 @@ def get_transaction_payments(id_user: int, db: Session = Depends(get_db)):
                 "total_amount": transaction.amount,
                 "total_paid": total_paid,
                 "status": transaction.status,
-                "payment_status": transaction.payment_status,
+                "payment_status": computed_status,
                 "created_at": transaction.created_at,
                 "seller_id": transaction.seller_id,
                 "seller_name": transaction.seller.name if transaction.seller else None,
@@ -1414,8 +1423,14 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
     # Filtrar las transacciones que están completamente pagadas
     paid_transactions = []
     for transaction in transactions:
-        total_paid = sum(evidence.amount for evidence in transaction.evidence if evidence.status == EvidenceStatus.approved)
-        if total_paid >= transaction.amount:  # >= por si hay sobrepagos
+        computed_status = calculate_payment_status(transaction.id, db)
+        if computed_status == PaymentStatus.pago_completo:
+            total_paid = sum(
+                evidence.amount
+                for evidence in transaction.evidence
+                if evidence.status == EvidenceStatus.approved
+                and evidence.invoice_status == EvidenceInvoiceStatus.facturado
+            )
             paid_transactions.append({
                 "id": transaction.id,
                 "client_name": transaction.client_name,
@@ -1423,7 +1438,7 @@ def get_all_paid_transactions(db: Session = Depends(get_db)):
                 "total_amount": transaction.amount,
                 "total_paid": total_paid,
                 "status": transaction.status,
-                "payment_status": transaction.payment_status,
+                "payment_status": computed_status,
                 "created_at": transaction.created_at,
                 "seller": {
                     "id": transaction.seller.id,
