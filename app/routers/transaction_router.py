@@ -1721,7 +1721,8 @@ def calculate_payment_status(transaction_id: int, db: Session) -> PaymentStatus:
         db.query(Evidence)
         .filter(
             Evidence.transaction_id == transaction_id,
-            Evidence.status == EvidenceStatus.approved
+            Evidence.status == EvidenceStatus.approved,
+            Evidence.invoice_status == EvidenceInvoiceStatus.facturado
         )
         .all()
     )
