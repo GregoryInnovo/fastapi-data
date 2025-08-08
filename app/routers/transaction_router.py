@@ -391,7 +391,8 @@ def update_transaction_status(transaction_id: int, status: TransactionStatus, db
     # 4) Actualiza el estado de esa evidencia (sólo si existe)
     if first_evidence:
         if transaction.status == "pending":
-            first_evidence.status = status
+            if not status  in ["incompleta", "pending", "terminado"]:
+                first_evidence.status = status
     
     # 2) Actualiza el estado de la transacción
     transaction.status = status
