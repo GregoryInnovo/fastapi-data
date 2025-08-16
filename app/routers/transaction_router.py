@@ -1894,18 +1894,10 @@ def get_ingresos_totales(
             'nombre': getattr(usuario, 'name', 'N/A')
         }
     
-    # Construir la consulta base
+    # Consulta base para ingresos: transacciones aprobadas
+    ingresos_query = db.query(Transaction).filter(Transaction.status == TransactionStatus.approved)
     if user_id is not None:
-        # Filtrar por usuario específico
-        query = db.query(Evidence).join(Transaction).filter(
-            and_(
-                Evidence.status == EvidenceStatus.approved,
-                Transaction.seller_id == user_id
-            )
-        )
-    else:
-        # Sin filtro de usuario
-        query = db.query(Evidence).filter(Evidence.status == EvidenceStatus.approved)
+        ingresos_query = ingresos_query.filter(Transaction.seller_id == user_id)
     
     # Si no se especifican fechas, obtener histórico completo
     if not fecha_inicio and not fecha_fin:
@@ -1946,11 +1938,11 @@ def get_ingresos_totales(
                 detail="La fecha de inicio debe ser menor o igual a la fecha de fin"
             )
         
-        # Aplicar filtro de fechas
-        query = query.filter(
+        # Aplicar filtro de fechas sobre created_at de transacciones
+        ingresos_query = ingresos_query.filter(
             and_(
-                func.date(Evidence.upload_date) >= fecha_inicio_obj,
-                func.date(Evidence.upload_date) <= fecha_fin_obj
+                func.date(Transaction.created_at) >= fecha_inicio_obj,
+                func.date(Transaction.created_at) <= fecha_fin_obj
             )
         )
         
@@ -1959,16 +1951,16 @@ def get_ingresos_totales(
         else:
             titulo_periodo = f"Período: {fecha_inicio} a {fecha_fin}"
     
-    # Ejecutar la consulta de evidencias
-    evidencias = query.all()
+    # Ejecutar la consulta de transacciones aprobadas
+    transacciones_aprobadas = ingresos_query.all()
     
-    # Calcular el total de ingresos
-    total_ingresos = sum(evidence.amount for evidence in evidencias) if evidencias else 0.0
+    # Calcular el total de ingresos (sumar montos de transacciones aprobadas)
+    total_ingresos = sum(t.amount for t in transacciones_aprobadas) if transacciones_aprobadas else 0.0
     
     # Calcular ganancias (15% de ingresos)
     total_ganancias = total_ingresos * 0.12
     
-    # Calcular comisión (5% de ingresos)
+    # Calcular comisión (30% de ganancias)
     total_comision = total_ganancias * 0.3
     
     # Obtener estadísticas de transacciones por estado
@@ -2006,7 +1998,7 @@ def get_ingresos_totales(
         "total_ingresos": total_ingresos,
         "total_ganancias": total_ganancias,
         "total_comision": total_comision,
-        "cantidad_evidencias": len(evidencias),
+        "cantidad_evidencias": len(transacciones_aprobadas),
         "estadisticas_ventas": {
             "total_ventas": total_ventas,
             "pending": ventas_pending,
@@ -2054,11 +2046,11 @@ def get_ingresos_totales_usuario(
             detail=f"Usuario con ID {user_id} no encontrado"
         )
 
-    # Construir la consulta base para evidencias del usuario
-    query = db.query(Evidence).join(Transaction).filter(
+    # Consulta base de transacciones aprobadas del usuario
+    trans_query_ingresos = db.query(Transaction).filter(
         and_(
-            Evidence.status == EvidenceStatus.approved,
-            Transaction.seller_id == user_id
+            Transaction.seller_id == user_id,
+            Transaction.status == TransactionStatus.approved
         )
     )
 
@@ -2098,21 +2090,21 @@ def get_ingresos_totales_usuario(
                 detail="La fecha de inicio debe ser menor o igual a la fecha de fin"
             )
 
-        # Aplicar filtro de fechas a evidencias
-        query = query.filter(
+        # Aplicar filtro de fechas a transacciones (created_at)
+        trans_query_ingresos = trans_query_ingresos.filter(
             and_(
-                func.date(Evidence.upload_date) >= fecha_inicio_obj,
-                func.date(Evidence.upload_date) <= fecha_fin_obj
+                func.date(Transaction.created_at) >= fecha_inicio_obj,
+                func.date(Transaction.created_at) <= fecha_fin_obj
             )
         )
 
         titulo_periodo = f"Período: {fecha_inicio} a {fecha_fin} - Usuario: {usuario.email}"
 
-    # Ejecutar la consulta de evidencias
-    evidencias = query.all()
+    # Ejecutar la consulta de transacciones aprobadas del usuario
+    transacciones_aprobadas = trans_query_ingresos.all()
 
-    # Calcular el total de ingresos
-    total_ingresos = sum(evidence.amount for evidence in evidencias) if evidencias else 0.0
+    # Calcular el total de ingresos (sumar montos de transacciones aprobadas)
+    total_ingresos = sum(t.amount for t in transacciones_aprobadas) if transacciones_aprobadas else 0.0
 
     # Calcular ganancias (15% de ingresos)
     total_ganancias = total_ingresos * 0.15
@@ -2153,7 +2145,7 @@ def get_ingresos_totales_usuario(
         "total_ingresos": total_ingresos,
         "total_ganancias": total_ganancias,
         "total_comision": total_comision,
-        "cantidad_evidencias": len(evidencias),
+        "cantidad_evidencias": len(transacciones_aprobadas),
         "estadisticas_ventas": {
             "total_ventas": total_ventas,
             "pending": ventas_pending,
@@ -2256,17 +2248,17 @@ def get_ingresos_totales_mensual(
     }
 
     for mes_info in meses:
-        # Consultar evidencias del mes
-        evidencias_mes = db.query(Evidence).filter(
+        # Transacciones aprobadas del mes
+        transacciones_aprobadas_mes = db.query(Transaction).filter(
             and_(
-                Evidence.status == EvidenceStatus.approved,
-                func.date(Evidence.upload_date) >= mes_info['fecha_inicio'],
-                func.date(Evidence.upload_date) <= mes_info['fecha_fin']
+                Transaction.status == TransactionStatus.approved,
+                func.date(Transaction.created_at) >= mes_info['fecha_inicio'],
+                func.date(Transaction.created_at) <= mes_info['fecha_fin']
             )
         ).all()
 
-        # Calcular ingresos del mes
-        ingresos_mes = sum(evidence.amount for evidence in evidencias_mes) if evidencias_mes else 0.0
+        # Calcular ingresos del mes (sumar montos de transacciones aprobadas)
+        ingresos_mes = sum(t.amount for t in transacciones_aprobadas_mes) if transacciones_aprobadas_mes else 0.0
         ganancias_mes = ingresos_mes * 0.15
         comision_mes = ingresos_mes * 0.05
 
@@ -2296,7 +2288,7 @@ def get_ingresos_totales_mensual(
             'ingresos': ingresos_mes,
             'ganancias': ganancias_mes,
             'comision': comision_mes,
-            'cantidad_evidencias': len(evidencias_mes),
+            'cantidad_evidencias': len(transacciones_aprobadas_mes),
             'estadisticas_ventas': {
                 'total_ventas': total_ventas_mes,
                 'pending': ventas_pending_mes,
@@ -2313,7 +2305,7 @@ def get_ingresos_totales_mensual(
         total_acumulado['ingresos'] += ingresos_mes
         total_acumulado['ganancias'] += ganancias_mes
         total_acumulado['comision'] += comision_mes
-        total_acumulado['cantidad_evidencias'] += len(evidencias_mes)
+        total_acumulado['cantidad_evidencias'] += len(transacciones_aprobadas_mes)
         total_acumulado['total_ventas'] += total_ventas_mes
         total_acumulado['ventas_pending'] += ventas_pending_mes
         total_acumulado['ventas_approved'] += ventas_approved_mes
@@ -2425,22 +2417,7 @@ def get_comisiones_por_usuario(
     }
 
     for seller_id in seller_ids:
-        # Obtener evidencias aprobadas del usuario en el período
-        evidencias_usuario = db.query(Evidence).join(Transaction).filter(
-            and_(
-                Evidence.status == EvidenceStatus.approved,
-                Transaction.seller_id == seller_id,
-                func.date(Evidence.upload_date) >= fecha_inicio_obj,
-                func.date(Evidence.upload_date) <= fecha_fin_obj
-            )
-        ).all()
-
-        # Calcular ingresos del usuario
-        ingresos_usuario = sum(evidence.amount for evidence in evidencias_usuario) if evidencias_usuario else 0.0
-        ganancias_usuario = ingresos_usuario * 0.15
-        comision_usuario = ingresos_usuario * 0.05
-
-        # Obtener transacciones del usuario en el período
+        # Transacciones del usuario en el período
         transacciones_usuario = db.query(Transaction).filter(
             and_(
                 Transaction.seller_id == seller_id,
@@ -2448,6 +2425,14 @@ def get_comisiones_por_usuario(
                 func.date(Transaction.created_at) <= fecha_fin_obj
             )
         ).all()
+
+        # Transacciones APROBADAS del usuario (para ingresos)
+        transacciones_aprobadas_usuario = [t for t in transacciones_usuario if t.status == TransactionStatus.approved]
+
+        # Calcular ingresos del usuario (sumar montos de transacciones aprobadas)
+        ingresos_usuario = sum(t.amount for t in transacciones_aprobadas_usuario) if transacciones_aprobadas_usuario else 0.0
+        ganancias_usuario = ingresos_usuario * 0.15
+        comision_usuario = ingresos_usuario * 0.05
 
         # Contar transacciones por estado
         total_ventas_usuario = len(transacciones_usuario)
@@ -2470,7 +2455,7 @@ def get_comisiones_por_usuario(
             'ingresos': ingresos_usuario,
             'ganancias': ganancias_usuario,
             'comision': comision_usuario,
-            'cantidad_evidencias': len(evidencias_usuario),
+            'cantidad_evidencias': len(transacciones_aprobadas_usuario),
             'estadisticas_ventas': {
                 'total_ventas': total_ventas_usuario,
                 'pending': ventas_pending,
@@ -2487,7 +2472,7 @@ def get_comisiones_por_usuario(
         total_general['ingresos'] += ingresos_usuario
         total_general['ganancias'] += ganancias_usuario
         total_general['comision'] += comision_usuario
-        total_general['cantidad_evidencias'] += len(evidencias_usuario)
+        total_general['cantidad_evidencias'] += len(transacciones_aprobadas_usuario)
         total_general['total_ventas'] += total_ventas_usuario
 
     # Ordenar usuarios por comisión (de mayor a menor)
