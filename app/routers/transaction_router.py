@@ -1018,6 +1018,7 @@ def get_evidence_by_status(
 
     evidences = query.all()
     if not evidences:
+        return [] #Gregson dice que le devuelva esto vacio
         raise HTTPException(
             status_code=404,
             detail=f"No se encontraron evidencias con estado {status}"
