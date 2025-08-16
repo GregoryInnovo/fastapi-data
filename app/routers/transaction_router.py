@@ -1966,10 +1966,10 @@ def get_ingresos_totales(
     total_ingresos = sum(evidence.amount for evidence in evidencias) if evidencias else 0.0
     
     # Calcular ganancias (15% de ingresos)
-    total_ganancias = total_ingresos * 0.15
+    total_ganancias = total_ingresos * 0.12
     
     # Calcular comisión (5% de ingresos)
-    total_comision = total_ingresos * 0.05
+    total_comision = total_ganancias * 0.3
     
     # Obtener estadísticas de transacciones por estado
     # Construir consulta base para transacciones
