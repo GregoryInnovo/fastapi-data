@@ -123,6 +123,8 @@ class TransactionCreate(BaseModel):
     travel_info: List[TravelInfoCrerate] = None
     evidence: List[EvidenceCreate] = None
     itinerario: List[ItinerarioCreate] = None
+    incluye: Optional[str] = None
+    no_incluye: Optional[str] = None
 
 
 class TransactionUpdate(BaseModel):
@@ -219,7 +221,13 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
         receipt=transaction.receipt,
         start_date=transaction.start_date,
         end_date=transaction.end_date,
-        number_of_travelers=len(transaction.travelers) if transaction.travelers else 0
+        number_of_travelers=len(transaction.travelers) if transaction.travelers else 0,
+        incluye=transaction.incluye if transaction.incluye is not None else (
+            ", ".join(transaction.travel_info[0].incluye) if transaction.travel_info and transaction.travel_info[0].incluye else None
+        ),
+        no_incluye=transaction.no_incluye if transaction.no_incluye is not None else (
+            ", ".join(transaction.travel_info[0].no_incluye) if transaction.travel_info and transaction.travel_info[0].no_incluye else None
+        )
     )
     db.add(new_transaction)
     db.commit()

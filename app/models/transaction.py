@@ -132,6 +132,8 @@ class Transaction(Base):
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     receipt = Column(String, nullable=True)
+    incluye = Column(String, nullable=True)
+    no_incluye = Column(String, nullable=True)
     number_of_travelers = Column(Integer, nullable=False)
 
     itinerario = relationship("Itinerario", back_populates="transaction")
