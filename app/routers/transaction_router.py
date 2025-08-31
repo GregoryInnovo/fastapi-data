@@ -99,6 +99,9 @@ class DocumentosUpdate(BaseModel):
     document_file: Optional[str] = None
     tipo_documento: Optional[str] = None
 
+class StatusUpdate(BaseModel):
+    status: TransactionStatus
+
 class TransactionCreate(BaseModel):
     client_name: str
     client_email: str
@@ -360,8 +363,8 @@ def list_transactions(db: Session = Depends(get_db)):
 
 
 #Actualizar el Estado de una Transacción: (Por ejemplo, cambiar a "aprobado" o "rechazado").
-@router.patch("/{transaction_id}/status", status_code=200)
-def update_transaction_status(transaction_id: int, status: TransactionStatus, db: Session = Depends(get_db)):
+@router.put("/{transaction_id}/status", status_code=200)
+def update_transaction_status(transaction_id: int, status_update: StatusUpdate, db: Session = Depends(get_db)):
     transaction = (
         db.query(Transaction)
           .filter(Transaction.id == transaction_id)
@@ -391,11 +394,11 @@ def update_transaction_status(transaction_id: int, status: TransactionStatus, db
     # 4) Actualiza el estado de esa evidencia (sólo si existe)
     if first_evidence:
         if transaction.status == "pending":
-            if not status  in ["incompleta", "pending", "terminado"]:
-                first_evidence.status = status
+            if not status_update.status  in ["incompleta", "pending", "terminado"]:
+                first_evidence.status = status_update.status
     
     # 2) Actualiza el estado de la transacción
-    transaction.status = status
+    transaction.status = status_update.status
 
     # Actualizar el estado de pago si es necesario
     update_transaction_payment_status(transaction_id, db)
