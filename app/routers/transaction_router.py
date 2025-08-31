@@ -439,6 +439,22 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
     # Calcular el total pagado
     total_paid = sum(evidence.amount for evidence in evidences if evidence.status == EvidenceStatus.approved)
     
+    # Preparar incluye/no_incluye (prioriza campos en transacción; si no, usa travel_info)
+    incluye_value = (
+        getattr(transaction, "incluye", None)
+        if getattr(transaction, "incluye", None) is not None
+        else (
+            ", ".join(travel_info[0].incluye) if travel_info and getattr(travel_info[0], "incluye", None) else None
+        )
+    )
+    no_incluye_value = (
+        getattr(transaction, "no_incluye", None)
+        if getattr(transaction, "no_incluye", None) is not None
+        else (
+            ", ".join(travel_info[0].no_incluye) if travel_info and getattr(travel_info[0], "no_incluye", None) else None
+        )
+    )
+    
     # Estructura de respuesta
     response = {
         "id": transaction.id,
@@ -463,6 +479,8 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
         "updated_at": transaction.updated_at,
         "start_date": transaction.start_date,
         "end_date": transaction.end_date,
+        "incluye": incluye_value,
+        "no_incluye": no_incluye_value,
         "travelers": [
             {
                 "id": traveler.id,
